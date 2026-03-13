@@ -16,6 +16,20 @@
 		A8CF8CB62F62817E0064176F /* mywisperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CB52F62817E0064176F /* mywisperTests.swift */; };
 		A8CF8CC02F62817E0064176F /* mywisperUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CBF2F62817E0064176F /* mywisperUITests.swift */; };
 		A8CF8CC22F62817E0064176F /* mywisperUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */; };
+		A8CF8CE22F62817D0064176F /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = A8CF8CE12F62817D0064176F /* SwiftWhisper */; };
+		A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD02F62817D0064176F /* AudioRecorder.swift */; };
+		A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */; };
+		A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD22F62817D0064176F /* HotkeyManager.swift */; };
+		A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD32F62817D0064176F /* TextPaster.swift */; };
+		A8CF8CDA2F62817D0064176F /* RecordingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */; };
+		A8CF8CDB2F62817D0064176F /* DictationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD52F62817D0064176F /* DictationManager.swift */; };
+		A8CF8CDC2F62817D0064176F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */; };
+		A8CF8CE32F62817D0064176F /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CE42F62817D0064176F /* SettingsManager.swift */; };
+		A8CF8CE52F62817D0064176F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CE62F62817D0064176F /* SettingsView.swift */; };
+		A8CF8CE72F62817D0064176F /* WhisperTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CE82F62817D0064176F /* WhisperTranscriber.swift */; };
+		A8CF8CF02F62817D0064176F /* TranscriptionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */; };
+		A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF32F62817D0064176F /* HomeView.swift */; };
+		A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF52F62817D0064176F /* OpenAIService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +63,19 @@
 		A8CF8CBB2F62817E0064176F /* mywisperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mywisperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8CF8CBF2F62817E0064176F /* mywisperUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mywisperUITests.swift; sourceTree = "<group>"; };
 		A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mywisperUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		A8CF8CD02F62817D0064176F /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
+		A8CF8CD22F62817D0064176F /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
+		A8CF8CD32F62817D0064176F /* TextPaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPaster.swift; sourceTree = "<group>"; };
+		A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlay.swift; sourceTree = "<group>"; };
+		A8CF8CD52F62817D0064176F /* DictationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationManager.swift; sourceTree = "<group>"; };
+		A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
+		A8CF8CE42F62817D0064176F /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
+		A8CF8CE62F62817D0064176F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A8CF8CE82F62817D0064176F /* WhisperTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperTranscriber.swift; sourceTree = "<group>"; };
+		A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionHistory.swift; sourceTree = "<group>"; };
+		A8CF8CF32F62817D0064176F /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		A8CF8CF52F62817D0064176F /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +83,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A8CF8CE22F62817D0064176F /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -101,6 +129,19 @@
 			children = (
 				A8CF8C9E2F62817B0064176F /* mywisperApp.swift */,
 				A8CF8CA02F62817B0064176F /* ContentView.swift */,
+				A8CF8CD52F62817D0064176F /* DictationManager.swift */,
+				A8CF8CD02F62817D0064176F /* AudioRecorder.swift */,
+				A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */,
+				A8CF8CD22F62817D0064176F /* HotkeyManager.swift */,
+				A8CF8CD32F62817D0064176F /* TextPaster.swift */,
+				A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */,
+				A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */,
+				A8CF8CE42F62817D0064176F /* SettingsManager.swift */,
+				A8CF8CE62F62817D0064176F /* SettingsView.swift */,
+				A8CF8CE82F62817D0064176F /* WhisperTranscriber.swift */,
+				A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */,
+				A8CF8CF32F62817D0064176F /* HomeView.swift */,
+				A8CF8CF52F62817D0064176F /* OpenAIService.swift */,
 				A8CF8CA22F62817D0064176F /* Assets.xcassets */,
 				A8CF8CA72F62817D0064176F /* Persistence.swift */,
 				A8CF8CAC2F62817D0064176F /* mywisper.entitlements */,
@@ -151,6 +192,9 @@
 			dependencies = (
 			);
 			name = mywisper;
+			packageProductDependencies = (
+				A8CF8CE12F62817D0064176F /* SwiftWhisper */,
+			);
 			productName = mywisper;
 			productReference = A8CF8C9B2F62817B0064176F /* mywisper.app */;
 			productType = "com.apple.product-type.application";
@@ -223,6 +267,9 @@
 				Base,
 			);
 			mainGroup = A8CF8C922F62817A0064176F;
+			packageReferences = (
+				A8CF8CE02F62817D0064176F /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
+			);
 			productRefGroup = A8CF8C9C2F62817B0064176F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -269,6 +316,19 @@
 				A8CF8CAB2F62817D0064176F /* mywisper.xcdatamodeld in Sources */,
 				A8CF8CA12F62817B0064176F /* ContentView.swift in Sources */,
 				A8CF8C9F2F62817B0064176F /* mywisperApp.swift in Sources */,
+				A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */,
+				A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */,
+				A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */,
+				A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */,
+				A8CF8CDA2F62817D0064176F /* RecordingOverlay.swift in Sources */,
+				A8CF8CDB2F62817D0064176F /* DictationManager.swift in Sources */,
+				A8CF8CDC2F62817D0064176F /* ModelDownloader.swift in Sources */,
+				A8CF8CE32F62817D0064176F /* SettingsManager.swift in Sources */,
+				A8CF8CE52F62817D0064176F /* SettingsView.swift in Sources */,
+				A8CF8CE72F62817D0064176F /* WhisperTranscriber.swift in Sources */,
+				A8CF8CF02F62817D0064176F /* TranscriptionHistory.swift in Sources */,
+				A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */,
+				A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -432,7 +492,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "mywisper needs microphone access to transcribe your speech.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "mywisper uses on-device speech recognition to convert your voice to text.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -459,7 +522,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "mywisper needs microphone access to transcribe your speech.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "mywisper uses on-device speech recognition to convert your voice to text.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -597,6 +663,25 @@
 			versionGroupType = wrapper.xcdatamodel;
 		};
 /* End XCVersionGroup section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A8CF8CE02F62817D0064176F /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A8CF8CE12F62817D0064176F /* SwiftWhisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8CF8CE02F62817D0064176F /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
+			productName = SwiftWhisper;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A8CF8C932F62817A0064176F /* Project object */;
 }

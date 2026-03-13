@@ -1,0 +1,88 @@
+//
+//  TranscriptionHistory.swift
+//  mywisper
+//
+//  Created by Сергей Борисов on 12.03.2026.
+//
+
+import Foundation
+
+struct TranscriptionRecord: Identifiable, Codable {
+    let id: UUID
+    let text: String
+    let rawText: String?
+    let date: Date
+    let engine: String
+    let language: String
+    let durationSeconds: Double
+    let aiProcessed: Bool
+    let aiModel: String?
+
+    init(text: String, rawText: String? = nil, engine: String, language: String, durationSeconds: Double, aiProcessed: Bool = false, aiModel: String? = nil) {
+        self.id = UUID()
+        self.text = text
+        self.rawText = rawText
+        self.date = Date()
+        self.engine = engine
+        self.language = language
+        self.durationSeconds = durationSeconds
+        self.aiProcessed = aiProcessed
+        self.aiModel = aiModel
+    }
+}
+
+class TranscriptionHistory: ObservableObject {
+    static let shared = TranscriptionHistory()
+
+    @Published var records: [TranscriptionRecord] = []
+
+    private let storageURL: URL = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("mywisper")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("history.json")
+    }()
+
+    init() {
+        load()
+    }
+
+    func add(_ record: TranscriptionRecord) {
+        records.insert(record, at: 0)
+        save()
+    }
+
+    func delete(at offsets: IndexSet) {
+        records.remove(atOffsets: offsets)
+        save()
+    }
+
+    func delete(id: UUID) {
+        records.removeAll { $0.id == id }
+        save()
+    }
+
+    func clearAll() {
+        records.removeAll()
+        save()
+    }
+
+    private func save() {
+        do {
+            let data = try JSONEncoder().encode(records)
+            try data.write(to: storageURL, options: .atomic)
+        } catch {
+            print("mywisper: Failed to save history: \(error)")
+        }
+    }
+
+    private func load() {
+        guard FileManager.default.fileExists(atPath: storageURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: storageURL)
+            records = try JSONDecoder().decode([TranscriptionRecord].self, from: data)
+        } catch {
+            print("mywisper: Failed to load history: \(error)")
+        }
+    }
+}

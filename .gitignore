@@ -1,0 +1,34 @@
+# Reference files
+reff/
+
+# Stray DMG artifacts
+1/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserdata
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+
+# Whisper models (large binaries)
+*.bin
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+*.swp
+*~
