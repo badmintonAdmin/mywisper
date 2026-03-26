@@ -2,8 +2,6 @@
 
 A lightweight macOS menu bar dictation app. Record speech with a global hotkey, transcribe using whisper.cpp (local), OpenAI Whisper API (cloud), or Apple Speech, and paste the result into any text field automatically.
 
-Inspired by [Superwhisper](https://superwhisper.com) and [Wispr Flow](https://wispr.com).
-
 ![macOS](https://img.shields.io/badge/macOS-13.3%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -59,11 +57,11 @@ Creates a styled DMG at `~/Downloads/mywisper.dmg` with drag-to-Applications lay
 
 mywisper requires these macOS permissions:
 
-| Permission | Why | How to grant |
-|---|---|---|
-| **Microphone** | Record audio | Prompted automatically on first recording |
-| **Accessibility** | Global hotkeys + auto-paste (Cmd+V) | System Settings → Privacy & Security → Accessibility → enable mywisper |
-| **Fn key** (optional) | Double-tap Fn hotkey | System Settings → Keyboard → set "Fn key" to "Do Nothing" |
+| Permission            | Why                                 | How to grant                                                           |
+| --------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| **Microphone**        | Record audio                        | Prompted automatically on first recording                              |
+| **Accessibility**     | Global hotkeys + auto-paste (Cmd+V) | System Settings → Privacy & Security → Accessibility → enable mywisper |
+| **Fn key** (optional) | Double-tap Fn hotkey                | System Settings → Keyboard → set "Fn key" to "Do Nothing"              |
 
 > **Note:** Without Accessibility permission, you can still record via the menu bar and transcriptions are copied to the clipboard — you just need to paste manually with Cmd+V.
 
@@ -80,11 +78,11 @@ mywisper requires these macOS permissions:
 
 Choose your engine in Settings → General:
 
-| Engine | Quality | Privacy | Requirements |
-|---|---|---|---|
-| **Cloud Whisper** | Best | Sends audio to OpenAI | OpenAI API key |
-| **Local Whisper** | Great | Fully on-device | whisper.cpp binary + model file |
-| **Apple Speech** | Good | On-device | None (uses macOS built-in) |
+| Engine            | Quality | Privacy               | Requirements                    |
+| ----------------- | ------- | --------------------- | ------------------------------- |
+| **Cloud Whisper** | Best    | Sends audio to OpenAI | OpenAI API key                  |
+| **Local Whisper** | Great   | Fully on-device       | whisper.cpp binary + model file |
+| **Apple Speech**  | Good    | On-device             | None (uses macOS built-in)      |
 
 ### AI Post-Processing
 
@@ -97,14 +95,14 @@ After transcription, mywisper can optionally send the text through an AI model t
 
 **Built-in presets:**
 
-| Preset | What it does |
-|---|---|
-| Clean Up | Fix grammar, punctuation, formatting |
-| Translate to English | Translate from any language to English |
-| Translate to Russian | Translate from any language to Russian |
-| Developer Style | Format for code comments, commits, technical docs |
-| Warm & Friendly | Conversational, approachable tone |
-| Formal Business | Professional emails and documents |
+| Preset               | What it does                                      |
+| -------------------- | ------------------------------------------------- |
+| Clean Up             | Fix grammar, punctuation, formatting              |
+| Translate to English | Translate from any language to English            |
+| Translate to Russian | Translate from any language to Russian            |
+| Developer Style      | Format for code comments, commits, technical docs |
+| Warm & Friendly      | Conversational, approachable tone                 |
+| Formal Business      | Professional emails and documents                 |
 
 You can create, edit, and delete custom presets. If AI processing fails, the raw transcription is used as a fallback.
 
@@ -113,11 +111,13 @@ You can create, edit, and delete custom presets. If AI processing fails, the raw
 ### Smart Vocabulary & Dictionary
 
 **Vocabulary terms** — add technical words (e.g., "Kubernetes", "nginx", "Dokploy") that are often misheard:
+
 - In Cloud Whisper mode: sent as hints to the Whisper API
 - In AI mode: included in the system prompt so AI corrects mangled variants
 - Works with any engine when AI processing is enabled
 
 **Manual replacements** — define exact substitutions (e.g., "dogploy" → "Dokploy"):
+
 - Case-insensitive find-and-replace
 - Applied after transcription, works with all engines
 - No AI required
@@ -126,13 +126,13 @@ You can create, edit, and delete custom presets. If AI processing fails, the raw
 
 On first launch, the bundled Tiny model is ready to use. Download larger models from Settings → General → Whisper Model:
 
-| Model | Size | Quality |
-|---|---|---|
-| Tiny / Tiny.en | 75 MB | Fast, basic accuracy |
-| Base / Base.en | 142 MB | Good balance |
-| Small / Small.en | 466 MB | Better accuracy |
-| Medium / Medium.en | 1.5 GB | High accuracy |
-| Large v3 | 3.1 GB | Best accuracy |
+| Model              | Size   | Quality              |
+| ------------------ | ------ | -------------------- |
+| Tiny / Tiny.en     | 75 MB  | Fast, basic accuracy |
+| Base / Base.en     | 142 MB | Good balance         |
+| Small / Small.en   | 466 MB | Better accuracy      |
+| Medium / Medium.en | 1.5 GB | High accuracy        |
+| Large v3           | 3.1 GB | Best accuracy        |
 
 `.en` models are English-only but more accurate for English speech.
 
@@ -140,17 +140,18 @@ Models are downloaded from HuggingFace and stored in `~/Library/Application Supp
 
 ### Hotkeys
 
-| Hotkey | Default | Description |
-|---|---|---|
-| **Recording toggle** | ⌃⌥Space | Start/stop recording |
-| **Double-tap Fn** | Enabled (0.4s window) | Alternative recording trigger |
-| **AI toggle** | Disabled | Toggle AI post-processing on/off |
+| Hotkey               | Default               | Description                      |
+| -------------------- | --------------------- | -------------------------------- |
+| **Recording toggle** | ⌃⌥Space               | Start/stop recording             |
+| **Double-tap Fn**    | Enabled (0.4s window) | Alternative recording trigger    |
+| **AI toggle**        | Disabled              | Toggle AI post-processing on/off |
 
 All hotkeys are configurable in Settings → Hotkey. Custom hotkeys require at least one modifier key (Ctrl, Option, Shift, or Cmd).
 
 ### Transcription History
 
 Access history from the menu bar → History. Each entry shows:
+
 - Transcribed text (expandable)
 - Original/raw text toggle (for AI-processed entries)
 - Metadata: timestamp, engine, duration, language, AI model
@@ -161,6 +162,7 @@ History is searchable and stored in `~/Library/Application Support/mywisper/hist
 ### Menu Bar
 
 The menu bar dropdown provides quick access to:
+
 - **Status** — Ready / Recording / Transcribing (icon changes accordingly)
 - **Last transcription** — click to copy
 - **Start/Stop recording** — with hotkey hint
@@ -195,18 +197,21 @@ Hotkey (Fn double-tap / ⌃⌥Space)
 All settings are accessible from the menu bar → Settings, organized in three tabs:
 
 ### General
+
 - Transcription engine selection (Apple / Whisper / Cloud)
 - Whisper model management (download, select, browse)
 - whisper-cli binary path
 - Language (English / Russian)
 
 ### AI Processing
+
 - Enable/disable AI processing
 - OpenAI API key and model selection
 - System prompt editor with preset management
 - Custom dictionary: vocabulary terms + manual replacements
 
 ### Hotkey
+
 - Custom recording hotkey configuration
 - Double-tap Fn toggle and speed adjustment (0.2–0.8s)
 - AI toggle hotkey configuration
