@@ -27,7 +27,7 @@ Inspired by [Superwhisper](https://superwhisper.com) and [Wispr Flow](https://wi
 
 ### From DMG
 
-1. Download `mywisper.dmg` from [Releases](../../releases)
+1. Download `mywisper.dmg` from [mywhisper.cloud](https://mywhisper.cloud/)
 2. Open the DMG and drag **mywisper** to Applications
 3. Launch mywisper — it appears in the menu bar (microphone icon)
 4. Grant permissions when prompted (see [Permissions](#permissions))
