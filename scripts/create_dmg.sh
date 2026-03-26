@@ -31,6 +31,22 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 echo "  Built: $APP_PATH"
 
+# Bundle whisper-cli binary into the app
+WHISPER_CLI="$HOME/Downloads/whisper.cpp/build/bin/whisper-cli"
+if [ ! -f "$WHISPER_CLI" ]; then
+    # Try /usr/local/bin as fallback
+    WHISPER_CLI="/usr/local/bin/whisper-cli"
+fi
+if [ -f "$WHISPER_CLI" ]; then
+    echo "  Bundling whisper-cli from: $WHISPER_CLI"
+    cp "$WHISPER_CLI" "$APP_PATH/Contents/Resources/whisper-cli"
+    chmod +x "$APP_PATH/Contents/Resources/whisper-cli"
+else
+    echo "ERROR: whisper-cli binary not found. Build whisper.cpp first:"
+    echo "  cd ~/Downloads/whisper.cpp && cmake -B build && cmake --build build --config Release"
+    exit 1
+fi
+
 # 2. Create DMG background image
 echo "[2/6] Creating DMG background..."
 mkdir -p "$BG_DIR"
