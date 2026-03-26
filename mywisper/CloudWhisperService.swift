@@ -64,14 +64,13 @@ class CloudWhisperService {
 
         request.httpBody = body
 
-        print("mywisper: Sending audio to OpenAI Whisper API (\(audioData.count) bytes, lang: \(langCode))...")
-
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("mywisper: Cloud Whisper network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
             }
+
+            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
 
             guard let data = data else {
                 completion(.failure(OpenAIError.noResponse))
@@ -79,15 +78,12 @@ class CloudWhisperService {
             }
 
             // Check HTTP status
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                // Try to parse error JSON
+            if httpStatus != 200 {
+                let body = String(data: data, encoding: .utf8) ?? "unknown"
                 if let errorResponse = try? JSONDecoder().decode(OpenAIService.ErrorResponse.self, from: data) {
-                    print("mywisper: Cloud Whisper API error: \(errorResponse.error.message)")
                     completion(.failure(OpenAIError.apiError(errorResponse.error.message)))
                 } else {
-                    let body = String(data: data, encoding: .utf8) ?? "unknown"
-                    print("mywisper: Cloud Whisper HTTP \(httpResponse.statusCode): \(body)")
-                    completion(.failure(OpenAIError.apiError("HTTP \(httpResponse.statusCode)")))
+                    completion(.failure(OpenAIError.apiError("HTTP \(httpStatus): \(body)")))
                 }
                 return
             }
@@ -95,7 +91,6 @@ class CloudWhisperService {
             // response_format=text returns plain text
             if let text = String(data: data, encoding: .utf8) {
                 let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                print("mywisper: Cloud Whisper result: '\(cleaned.prefix(80))'")
                 completion(.success(cleaned))
             } else {
                 completion(.failure(OpenAIError.emptyResponse))

@@ -82,11 +82,8 @@ class OpenAIService {
             return
         }
 
-        print("mywisper: Sending to OpenAI (\(model))...")
-
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("mywisper: OpenAI network error: \(error.localizedDescription)")
                 completion(.failure(error))
                 return
             }
@@ -98,7 +95,6 @@ class OpenAIService {
 
             // Check for API error
             if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                print("mywisper: OpenAI API error: \(errorResponse.error.message)")
                 completion(.failure(OpenAIError.apiError(errorResponse.error.message)))
                 return
             }
@@ -107,13 +103,11 @@ class OpenAIService {
                 let response = try JSONDecoder().decode(ChatResponse.self, from: data)
                 if let result = response.choices.first?.message.content {
                     let cleaned = result.trimmingCharacters(in: .whitespacesAndNewlines)
-                    print("mywisper: OpenAI result: '\(cleaned.prefix(80))'")
                     completion(.success(cleaned))
                 } else {
                     completion(.failure(OpenAIError.emptyResponse))
                 }
             } catch {
-                print("mywisper: OpenAI parse error: \(error)")
                 completion(.failure(OpenAIError.parseError))
             }
         }.resume()

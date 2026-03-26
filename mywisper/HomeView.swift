@@ -238,8 +238,8 @@ struct TranscriptionRow: View {
                 .help(Self.dateFormatter.string(from: record.date))
 
                 MetadataBadge(
-                    text: record.engine == "whisper" ? "Whisper" : "Apple",
-                    icon: record.engine == "whisper" ? "waveform" : "apple.logo"
+                    text: record.engine == "cloud" ? "Cloud" : (record.engine == "whisper" ? "Whisper" : "Apple"),
+                    icon: record.engine == "cloud" ? "cloud" : (record.engine == "whisper" ? "waveform" : "apple.logo")
                 )
 
                 MetadataBadge(

@@ -42,17 +42,6 @@ class DictationManager: ObservableObject {
     init() {
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
 
-        // Startup diagnostics
-        print("mywisper: === STARTUP DIAGNOSTICS ===")
-        print("mywisper: Engine: \(settings.engine.rawValue)")
-        print("mywisper: Model path: \(settings.whisperModelPath.isEmpty ? "(empty)" : settings.whisperModelPath)")
-        print("mywisper: Model exists: \(settings.whisperModelPath.isEmpty ? false : FileManager.default.fileExists(atPath: settings.whisperModelPath))")
-        print("mywisper: Binary path: \(whisperTranscriber.binaryPath)")
-        print("mywisper: Binary exists: \(FileManager.default.fileExists(atPath: whisperTranscriber.binaryPath))")
-        print("mywisper: Accessibility: \(AXIsProcessTrusted())")
-        print("mywisper: Bundle path: \(Bundle.main.bundlePath)")
-        print("mywisper: ===========================")
-
         checkPermissions()
 
         hotkeyManager.onToggle = { [weak self] in
@@ -62,8 +51,6 @@ class DictationManager: ObservableObject {
         hotkeyManager.onToggleAI = { [weak self] in
             guard let self = self else { return }
             self.settings.aiProcessingEnabled.toggle()
-            let status = self.settings.aiProcessingEnabled ? "ON" : "OFF"
-            print("mywisper: AI processing toggled \(status) via hotkey")
         }
 
         // Wire audio level metering to overlay (runs at 30fps)
@@ -87,7 +74,6 @@ class DictationManager: ObservableObject {
         if settings.engine == .whisper && !settings.whisperModelPath.isEmpty {
             whisperTranscriber.loadModel(path: settings.whisperModelPath)
             whisperTranscriber.setLanguage(selectedLanguage)
-            print("mywisper: Whisper ready: \(whisperTranscriber.isReady)")
         }
 
         // Watch for settings changes
@@ -207,7 +193,6 @@ class DictationManager: ObservableObject {
 
         // Remember which app was active so we can paste back into it
         previousApp = NSWorkspace.shared.frontmostApplication
-        print("mywisper: Saved previous app: \(previousApp?.localizedName ?? "none")")
 
         do {
             try audioRecorder.startRecording()
@@ -231,7 +216,7 @@ class DictationManager: ObservableObject {
         let audioFileURL = audioRecorder.stopRecordingAndGetURL()
         isRecording = false
         isTranscribing = true
-        recordingPanel?.state.statusText = "Transcribing..."
+        recordingPanel?.state.statusText = settings.engine == .cloud ? "Cloud Transcribing..." : "Transcribing..."
         recordingPanel?.state.isRecording = false
         recordingPanel?.state.isTranscribing = true
 
@@ -242,20 +227,9 @@ class DictationManager: ObservableObject {
             return
         }
 
-        let startTime = Date()
-        let engineName: String
-        switch settings.engine {
-        case .apple: engineName = "Apple Speech"
-        case .whisper: engineName = "Whisper"
-        case .cloud: engineName = "Cloud Whisper"
-        }
-        print("mywisper: Using \(engineName) engine")
-
         let completionHandler: (Result<String, Error>) -> Void = { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                let elapsed = Date().timeIntervalSince(startTime)
-                print("mywisper: Transcription done in \(String(format: "%.1f", elapsed))s (\(engineName))")
 
                 switch result {
                 case .success(let rawText):
@@ -263,7 +237,6 @@ class DictationManager: ObservableObject {
                         // AI post-processing step
                         self.recordingPanel?.state.statusText = "AI Processing..."
                         self.recordingPanel?.state.isTranscribing = true
-                        print("mywisper: Sending to AI for post-processing...")
 
                         var effectivePrompt = self.settings.aiSystemPrompt
                         if let addendum = self.settings.vocabularyAIAddendum() {
@@ -288,7 +261,6 @@ class DictationManager: ObservableObject {
                                 switch aiResult {
                                 case .success(let processed):
                                     finalText = processed
-                                    print("mywisper: AI processing complete")
                                 case .failure(let error):
                                     // Fall back to raw text on AI error
                                     finalText = rawText
@@ -384,16 +356,7 @@ class DictationManager: ObservableObject {
         guard !permissionsChecked else { return }
         permissionsChecked = true
 
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
-            if !granted { print("mywisper: Microphone permission denied") }
-        }
-
-        // Log accessibility status but don't show dialog on startup
-        let accessOK = AXIsProcessTrusted()
-        print("mywisper: Accessibility permission: \(accessOK ? "granted" : "not granted")")
-        if !accessOK {
-            print("mywisper: Global hotkeys and auto-paste won't work. Grant in System Settings > Privacy & Security > Accessibility")
-        }
+        AVCaptureDevice.requestAccess(for: .audio) { _ in }
     }
 
     deinit {

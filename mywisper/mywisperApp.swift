@@ -213,7 +213,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let text = dictationManager.currentTranscription
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        print("mywisper: Copied transcription to clipboard")
     }
 
     @objc private func selectEnglish() {

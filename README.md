@@ -16,7 +16,8 @@ Inspired by [Superwhisper](https://superwhisper.com) and [Wispr Flow](https://wi
 - **Multiple Whisper models** — from Tiny (75 MB) to Large v3 (3.1 GB), downloadable in-app
 - **AI post-processing** — optional OpenAI integration to clean up, translate, or restyle transcriptions
 - **6 built-in AI presets** — Clean Up, Translate, Developer Style, Warm & Friendly, Formal Business
-- **Two engines** — whisper.cpp (accurate) or Apple Speech (fast, no model download)
+- **Three engines** — Cloud Whisper (OpenAI API, best quality), local whisper.cpp (private), or Apple Speech (fast, no model download)
+- **Smart vocabulary** — add technical terms once, they're used as hints for both Whisper API and AI post-processing
 - **Language support** — English and Russian
 - **Auto-paste** — transcribed text is pasted directly into the focused app
 - **Recording overlay** — floating pill with waveform, timer, and stop button
@@ -93,6 +94,7 @@ Hotkey (Fn double-tap / ⌃⌥Space)
   → DictationManager (orchestrator)
     ├── AudioRecorder — AVAudioRecorder, 16kHz mono PCM
     ├── WhisperTranscriber — whisper.cpp CLI transcription
+    ├── CloudWhisperService — OpenAI Whisper API transcription
     ├── SpeechTranscriber — Apple Speech (alternative engine)
     ├── OpenAIService — optional AI post-processing
     ├── TextPaster — NSPasteboard + CGEvent Cmd+V
@@ -106,7 +108,7 @@ Hotkey (Fn double-tap / ⌃⌥Space)
 
 All settings are accessible from the menu bar → Settings:
 
-- **Engine** — Whisper (local) or Apple Speech
+- **Engine** — Cloud Whisper (OpenAI), local Whisper, or Apple Speech
 - **Language** — English / Russian
 - **Hotkeys** — double-tap Fn interval, custom hotkey, AI toggle hotkey
 - **AI** — API key, model, system prompt, presets

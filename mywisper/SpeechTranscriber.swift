@@ -26,21 +26,15 @@ class SpeechTranscriber {
         // Request authorization
         SFSpeechRecognizer.requestAuthorization { status in
             switch status {
-            case .authorized:
-                print("mywisper: Speech recognition authorized")
             case .denied:
                 print("mywisper: Speech recognition denied")
             case .restricted:
                 print("mywisper: Speech recognition restricted")
-            case .notDetermined:
-                print("mywisper: Speech recognition not determined")
-            @unknown default:
+            default:
                 break
             }
         }
 
-        let onDevice = recognizer?.supportsOnDeviceRecognition ?? false
-        print("mywisper: SFSpeechRecognizer configured for \(language), on-device: \(onDevice)")
     }
 
     func setLanguage(_ language: String) {
@@ -57,11 +51,8 @@ class SpeechTranscriber {
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         request.shouldReportPartialResults = false
 
-        print("mywisper: Starting speech recognition (on-device: \(request.requiresOnDeviceRecognition))...")
-
         recognizer.recognitionTask(with: request) { result, error in
             if let error = error {
-                print("mywisper: Recognition error: \(error)")
                 completion(.failure(error))
                 return
             }
@@ -70,7 +61,6 @@ class SpeechTranscriber {
 
             if result.isFinal {
                 let text = result.bestTranscription.formattedString
-                print("mywisper: Recognition result: '\(text)'")
                 completion(.success(text))
             }
         }

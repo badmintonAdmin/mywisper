@@ -42,7 +42,6 @@ class HotkeyManager {
         // Fn double-tap via NSEvent monitors
         registerFnDoubleTap()
 
-        print("mywisper: Hotkey monitors registered. Accessibility: \(AXIsProcessTrusted()), customHotkey: \(useCustomHotkey), aiHotkey: \(useAIToggleHotkey), eventTap: \(eventTap != nil)")
     }
 
     // MARK: - CGEvent Tap (global hotkey that works everywhere)
@@ -78,7 +77,6 @@ class HotkeyManager {
                 // Check if this matches our custom recording hotkey
                 if manager.useCustomHotkey && keyCode == manager.customHotkeyKeyCode {
                     if manager.matchesModifiers(flags, required: manager.customHotkeyModifiers) {
-                        print("mywisper: Global hotkey triggered via CGEvent tap!")
                         DispatchQueue.main.async {
                             manager.onToggle?()
                         }
@@ -89,7 +87,6 @@ class HotkeyManager {
                 // Check if this matches our AI toggle hotkey
                 if manager.useAIToggleHotkey && keyCode == manager.aiToggleHotkeyKeyCode {
                     if manager.matchesModifiers(flags, required: manager.aiToggleHotkeyModifiers) {
-                        print("mywisper: AI toggle hotkey triggered via CGEvent tap!")
                         DispatchQueue.main.async {
                             manager.onToggleAI?()
                         }
@@ -146,7 +143,6 @@ class HotkeyManager {
             if let lastRelease = lastFnReleaseTime,
                now.timeIntervalSince(lastRelease) < doubleTapInterval {
                 lastFnReleaseTime = nil
-                print("mywisper: Double-tap Fn detected!")
                 DispatchQueue.main.async { [weak self] in
                     self?.onToggle?()
                 }

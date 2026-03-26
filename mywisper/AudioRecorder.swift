@@ -38,7 +38,6 @@ class AudioRecorder {
         }
 
         self.recorder = rec
-        print("mywisper: Recording started")
 
         // Start metering timer for audio level visualization
         meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
@@ -63,10 +62,7 @@ class AudioRecorder {
         rec.stop()
         self.recorder = nil
 
-        print("mywisper: Recording stopped, duration: \(String(format: "%.1f", duration))s")
-
         guard duration > 0.3 else {
-            print("mywisper: Recording too short")
             return nil
         }
 

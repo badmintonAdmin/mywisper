@@ -54,10 +54,7 @@ class WhisperTranscriber {
         }
         modelPath = path
 
-        if FileManager.default.fileExists(atPath: binaryPath) {
-            print("mywisper: Whisper CLI ready at \(binaryPath)")
-            print("mywisper: Model: \(path)")
-        } else {
+        if !FileManager.default.fileExists(atPath: binaryPath) {
             print("mywisper: WARNING - whisper-cli binary not found at \(binaryPath)")
             print("mywisper: Build whisper.cpp first: cd ~/Downloads/whisper.cpp && make")
         }
@@ -81,8 +78,6 @@ class WhisperTranscriber {
             completion(.failure(WhisperTranscriberError.binaryNotFound))
             return
         }
-
-        print("mywisper: Starting whisper-cli transcription...")
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -128,8 +123,6 @@ class WhisperTranscriber {
                 let cleaned = output
                     .replacingOccurrences(of: "\\[.*?\\]", with: "", options: .regularExpression)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                print("mywisper: whisper-cli result: '\(cleaned.prefix(80))'")
 
                 DispatchQueue.main.async {
                     completion(.success(cleaned))

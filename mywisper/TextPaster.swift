@@ -13,17 +13,14 @@ class TextPaster {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        print("mywisper: Text copied to clipboard: '\(text.prefix(50))...'")
 
         // Re-activate the app that was focused before recording started
         if let app = previousApp {
-            print("mywisper: Re-activating \(app.localizedName ?? "unknown app")")
             app.activate(options: .activateIgnoringOtherApps)
         }
 
         // Only simulate Cmd+V if accessibility is granted
         guard AXIsProcessTrusted() else {
-            print("mywisper: Accessibility not granted — text copied to clipboard, paste manually with Cmd+V")
             return
         }
 
@@ -39,7 +36,6 @@ class TextPaster {
 
             keyDown?.post(tap: .cghidEventTap)
             keyUp?.post(tap: .cghidEventTap)
-            print("mywisper: Cmd+V simulated")
         }
     }
 
