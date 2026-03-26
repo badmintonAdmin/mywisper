@@ -179,6 +179,20 @@ struct SettingsView: View {
                         Divider().padding(.vertical, 4)
                         whisperModelSection
                     }
+
+                    if settings.engine == .cloud {
+                        Divider().padding(.vertical, 4)
+                        HStack(spacing: 6) {
+                            Image(systemName: settings.openAIKey.isEmpty ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .foregroundColor(settings.openAIKey.isEmpty ? .orange : .green)
+                                .font(.system(size: 12))
+                            Text(settings.openAIKey.isEmpty
+                                ? "API key required — set it in the AI Processing tab"
+                                : "Using OpenAI API key from AI Processing settings")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
 
                 SectionCard(title: "Language", icon: "globe", subtitle: "Speech recognition language") {
@@ -441,6 +455,121 @@ struct SettingsView: View {
                         }
                     }
                     .toggleStyle(.switch)
+                }
+
+                // Custom Dictionary (works with and without AI)
+                SectionCard(title: "Custom Dictionary", icon: "character.book.closed", subtitle: "Correct frequently misrecognized words") {
+                    Toggle(isOn: $settings.customDictionaryEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable dictionary")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(settings.aiProcessingEnabled || settings.engine == .cloud
+                                ? "Terms guide AI/Cloud Whisper for accurate recognition"
+                                : "Simple find-and-replace on transcribed text")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
+                    if settings.customDictionaryEnabled {
+                        // Vocabulary Terms (smart single-word mode)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Vocabulary Terms")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Add correct spellings of technical terms, names, etc. The AI and Cloud Whisper will recognize them automatically.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+
+                            if settings.vocabularyTerms.isEmpty {
+                                Text("No terms yet. Add words like Dokploy, Kubernetes, nginx...")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                VStack(spacing: 4) {
+                                    ForEach(Array(settings.vocabularyTerms.enumerated()), id: \.offset) { index, _ in
+                                        HStack(spacing: 8) {
+                                            TextField("e.g. Dokploy, Kubernetes", text: $settings.vocabularyTerms[index])
+                                                .textFieldStyle(.roundedBorder)
+                                                .font(.system(size: 12))
+                                            Button {
+                                                settings.vocabularyTerms.remove(at: index)
+                                            } label: {
+                                                Image(systemName: "minus.circle.fill")
+                                                    .foregroundColor(.red.opacity(0.7))
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button {
+                                settings.vocabularyTerms.append("")
+                            } label: {
+                                Label("Add Term", systemImage: "plus")
+                            }
+                            .controlSize(.small)
+                        }
+
+                        Divider().padding(.vertical, 4)
+
+                        // Legacy wrong→correct replacements (collapsible)
+                        DisclosureGroup("Manual Replacements (wrong → correct)") {
+                            Text("For non-AI mode: manually map misrecognized words to correct ones.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .padding(.top, 2)
+
+                            if settings.customDictionary.isEmpty {
+                                Text("No entries yet.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                VStack(spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        Text("Wrong")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Text("Correct")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Color.clear.frame(width: 24)
+                                    }
+
+                                    ForEach(Array(settings.customDictionary.enumerated()), id: \.element.id) { index, _ in
+                                        HStack(spacing: 8) {
+                                            TextField("wrong word", text: $settings.customDictionary[index].wrong)
+                                                .textFieldStyle(.roundedBorder)
+                                                .font(.system(size: 12))
+                                            TextField("correct word", text: $settings.customDictionary[index].correct)
+                                                .textFieldStyle(.roundedBorder)
+                                                .font(.system(size: 12))
+                                            Button {
+                                                settings.customDictionary.remove(at: index)
+                                            } label: {
+                                                Image(systemName: "minus.circle.fill")
+                                                    .foregroundColor(.red.opacity(0.7))
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button {
+                                settings.customDictionary.append(DictionaryEntry(wrong: "", correct: ""))
+                            } label: {
+                                Label("Add Entry", systemImage: "plus")
+                            }
+                            .controlSize(.small)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                    }
                 }
 
                 if settings.aiProcessingEnabled {

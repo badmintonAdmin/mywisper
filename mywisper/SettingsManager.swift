@@ -11,12 +11,26 @@ import AppKit
 enum TranscriptionEngine: String, CaseIterable {
     case apple = "apple"
     case whisper = "whisper"
+    case cloud = "cloud"
 
     var displayName: String {
         switch self {
         case .apple: return "Apple Speech (fast, lower quality)"
         case .whisper: return "Whisper (better quality, slower)"
+        case .cloud: return "Cloud (OpenAI Whisper API)"
         }
+    }
+}
+
+struct DictionaryEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    var wrong: String
+    var correct: String
+
+    init(wrong: String, correct: String) {
+        self.id = UUID()
+        self.wrong = wrong
+        self.correct = correct
     }
 }
 
@@ -138,6 +152,30 @@ class SettingsManager: ObservableObject {
         HotkeyManager.hotkeyDisplayString(modifiers: aiToggleHotkeyModifiers, keyCode: aiToggleHotkeyKeyCode)
     }
 
+    // MARK: - Custom Dictionary
+
+    @Published var customDictionaryEnabled: Bool {
+        didSet { UserDefaults.standard.set(customDictionaryEnabled, forKey: "customDictionaryEnabled") }
+    }
+
+    @Published var customDictionary: [DictionaryEntry] {
+        didSet {
+            if let data = try? JSONEncoder().encode(customDictionary) {
+                UserDefaults.standard.set(data, forKey: "customDictionary")
+            }
+        }
+    }
+
+    // MARK: - Vocabulary Terms (smart single-word dictionary)
+
+    @Published var vocabularyTerms: [String] {
+        didSet {
+            if let data = try? JSONEncoder().encode(vocabularyTerms) {
+                UserDefaults.standard.set(data, forKey: "vocabularyTerms")
+            }
+        }
+    }
+
     @Published var selectedPresetId: UUID? {
         didSet {
             if let id = selectedPresetId {
@@ -214,6 +252,25 @@ class SettingsManager: ObservableObject {
             self.aiPresets = AIPromptPreset.builtIn
         }
 
+        // Custom Dictionary
+        self.customDictionaryEnabled = UserDefaults.standard.object(forKey: "customDictionaryEnabled") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "customDictionaryEnabled")
+
+        if let dictData = UserDefaults.standard.data(forKey: "customDictionary"),
+           let decoded = try? JSONDecoder().decode([DictionaryEntry].self, from: dictData) {
+            self.customDictionary = decoded
+        } else {
+            self.customDictionary = []
+        }
+
+        if let vocabData = UserDefaults.standard.data(forKey: "vocabularyTerms"),
+           let decoded = try? JSONDecoder().decode([String].self, from: vocabData) {
+            self.vocabularyTerms = decoded
+        } else {
+            self.vocabularyTerms = []
+        }
+
         if let idString = UserDefaults.standard.string(forKey: "selectedPresetId"),
            let id = UUID(uuidString: idString) {
             self.selectedPresetId = id
@@ -248,6 +305,47 @@ class SettingsManager: ObservableObject {
                 UserDefaults.standard.set(engine.rawValue, forKey: "transcriptionEngine")
             }
         }
+    }
+
+    // MARK: - Dictionary Helpers
+
+    func dictionaryPromptAddendum() -> String? {
+        let active = customDictionary.filter { !$0.wrong.isEmpty && !$0.correct.isEmpty }
+        guard customDictionaryEnabled && !active.isEmpty else { return nil }
+        let lines = active.map { "- \"\($0.wrong)\" → \"\($0.correct)\"" }.joined(separator: "\n")
+        return "\n\nIMPORTANT: The following words/phrases are often misrecognized by speech recognition. Always use the correct spelling when you encounter these or similar-sounding words:\n\(lines)"
+    }
+
+    func applyDictionaryReplacements(to text: String) -> String {
+        guard customDictionaryEnabled else { return text }
+        var result = text
+        for entry in customDictionary where !entry.wrong.isEmpty && !entry.correct.isEmpty {
+            result = result.replacingOccurrences(
+                of: entry.wrong,
+                with: entry.correct,
+                options: [.caseInsensitive]
+            )
+        }
+        return result
+    }
+
+    // MARK: - Vocabulary Helpers
+
+    /// Build vocabulary hint string for OpenAI Whisper API prompt parameter
+    func vocabularyPromptHint() -> String? {
+        guard customDictionaryEnabled else { return nil }
+        let terms = vocabularyTerms.filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return nil }
+        return terms.joined(separator: ", ")
+    }
+
+    /// Build vocabulary addendum for AI system prompt
+    func vocabularyAIAddendum() -> String? {
+        guard customDictionaryEnabled else { return nil }
+        let terms = vocabularyTerms.filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return nil }
+        let list = terms.map { "- \($0)" }.joined(separator: "\n")
+        return "\n\nCRITICAL VOCABULARY CORRECTIONS: The following are correct technical terms. Speech recognition often badly misspells these. You MUST find any word that sounds even remotely similar to these terms and replace it with the correct spelling. For example, \"dogploy\", \"dock ploy\", \"dog ploy\", \"dokploy\" should all become \"Dokploy\". Be aggressive — if a word could possibly be a mangled version of one of these terms, use the correct spelling:\n\(list)"
     }
 
     /// Scans known locations for Whisper .bin model files

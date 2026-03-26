@@ -30,6 +30,7 @@
 		A8CF8CF02F62817D0064176F /* TranscriptionHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */; };
 		A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF32F62817D0064176F /* HomeView.swift */; };
 		A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF52F62817D0064176F /* OpenAIService.swift */; };
+		A8CF8D002F6F00000064176F /* CloudWhisperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8D012F6F00000064176F /* CloudWhisperService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +77,7 @@
 		A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionHistory.swift; sourceTree = "<group>"; };
 		A8CF8CF32F62817D0064176F /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A8CF8CF52F62817D0064176F /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
+		A8CF8D012F6F00000064176F /* CloudWhisperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWhisperService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +144,7 @@
 				A8CF8CF12F62817D0064176F /* TranscriptionHistory.swift */,
 				A8CF8CF32F62817D0064176F /* HomeView.swift */,
 				A8CF8CF52F62817D0064176F /* OpenAIService.swift */,
+				A8CF8D012F6F00000064176F /* CloudWhisperService.swift */,
 				A8CF8CA22F62817D0064176F /* Assets.xcassets */,
 				A8CF8CA72F62817D0064176F /* Persistence.swift */,
 				A8CF8CAC2F62817D0064176F /* mywisper.entitlements */,
@@ -329,6 +332,7 @@
 				A8CF8CF02F62817D0064176F /* TranscriptionHistory.swift in Sources */,
 				A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */,
 				A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */,
+				A8CF8D002F6F00000064176F /* CloudWhisperService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

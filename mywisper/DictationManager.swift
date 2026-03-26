@@ -28,6 +28,7 @@ class DictationManager: ObservableObject {
     private let speechTranscriber = SpeechTranscriber()
     private let whisperTranscriber = WhisperTranscriber()
     private let openAIService = OpenAIService.shared
+    private let cloudWhisperService = CloudWhisperService.shared
     private let textPaster = TextPaster()
     private let hotkeyManager = HotkeyManager()
     private let settings = SettingsManager.shared
@@ -162,7 +163,8 @@ class DictationManager: ObservableObject {
         guard !isRecording && !isTranscribing else { return }
 
         // Check engine readiness
-        if settings.engine == .apple {
+        switch settings.engine {
+        case .apple:
             if !speechTranscriber.isReady {
                 speechTranscriber.configure(language: selectedLanguage)
                 guard speechTranscriber.isReady else {
@@ -171,12 +173,10 @@ class DictationManager: ObservableObject {
                     return
                 }
             }
-        } else {
+        case .whisper:
             if !whisperTranscriber.isReady {
-                // Validate model path exists before loading
                 if !settings.whisperModelPath.isEmpty && !FileManager.default.fileExists(atPath: settings.whisperModelPath) {
                     print("mywisper: Model file missing at \(settings.whisperModelPath), searching for alternative...")
-                    // Try to find a valid model
                     let models = settings.findAvailableModels()
                     if let first = models.first {
                         settings.whisperModelPath = first.path
@@ -189,6 +189,12 @@ class DictationManager: ObservableObject {
                     currentTranscription = "Error: Whisper not ready. Check model & binary in Settings."
                     return
                 }
+            }
+        case .cloud:
+            guard !settings.openAIKey.isEmpty else {
+                print("mywisper: Cloud Whisper requires OpenAI API key")
+                currentTranscription = "Error: OpenAI API key required. Set it in Settings → AI Processing."
+                return
             }
         }
 
@@ -237,7 +243,12 @@ class DictationManager: ObservableObject {
         }
 
         let startTime = Date()
-        let engineName = settings.engine == .apple ? "Apple Speech" : "Whisper"
+        let engineName: String
+        switch settings.engine {
+        case .apple: engineName = "Apple Speech"
+        case .whisper: engineName = "Whisper"
+        case .cloud: engineName = "Cloud Whisper"
+        }
         print("mywisper: Using \(engineName) engine")
 
         let completionHandler: (Result<String, Error>) -> Void = { [weak self] result in
@@ -254,11 +265,19 @@ class DictationManager: ObservableObject {
                         self.recordingPanel?.state.isTranscribing = true
                         print("mywisper: Sending to AI for post-processing...")
 
+                        var effectivePrompt = self.settings.aiSystemPrompt
+                        if let addendum = self.settings.vocabularyAIAddendum() {
+                            effectivePrompt += addendum
+                        }
+                        if let addendum = self.settings.dictionaryPromptAddendum() {
+                            effectivePrompt += addendum
+                        }
+
                         self.openAIService.process(
                             text: rawText,
                             apiKey: self.settings.openAIKey,
                             model: self.settings.openAIModel,
-                            systemPrompt: self.settings.aiSystemPrompt
+                            systemPrompt: effectivePrompt
                         ) { [weak self] aiResult in
                             DispatchQueue.main.async {
                                 guard let self = self else { return }
@@ -292,21 +311,23 @@ class DictationManager: ObservableObject {
                             }
                         }
                     } else {
-                        // No AI processing — paste directly
+                        // No AI processing — apply dictionary replacements and paste
+                        let processedText = self.settings.applyDictionaryReplacements(to: rawText)
                         self.isTranscribing = false
-                        self.currentTranscription = rawText
+                        self.currentTranscription = processedText
                         self.hideOverlay()
 
-                        if !rawText.isEmpty {
+                        if !processedText.isEmpty {
                             let recordingDuration = self.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
                             let record = TranscriptionRecord(
-                                text: rawText,
+                                text: processedText,
+                                rawText: processedText != rawText ? rawText : nil,
                                 engine: self.settings.engine.rawValue,
                                 language: self.selectedLanguage,
                                 durationSeconds: recordingDuration
                             )
                             self.history.add(record)
-                            self.textPaster.paste(text: rawText, previousApp: self.previousApp)
+                            self.textPaster.paste(text: processedText, previousApp: self.previousApp)
                         }
                     }
                 case .failure(let error):
@@ -318,10 +339,19 @@ class DictationManager: ObservableObject {
             }
         }
 
-        if settings.engine == .apple {
+        switch settings.engine {
+        case .apple:
             speechTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
-        } else {
+        case .whisper:
             whisperTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
+        case .cloud:
+            cloudWhisperService.transcribe(
+                audioFileURL: url,
+                apiKey: settings.openAIKey,
+                language: selectedLanguage,
+                prompt: settings.vocabularyPromptHint(),
+                completion: completionHandler
+            )
         }
     }
 

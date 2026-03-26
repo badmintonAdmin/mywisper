@@ -136,7 +136,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // Engine indicator
-        let engineName = SettingsManager.shared.engine == .apple ? "Apple Speech" : "Whisper"
+        let engineName: String
+        switch SettingsManager.shared.engine {
+        case .apple: engineName = "Apple Speech"
+        case .whisper: engineName = "Whisper"
+        case .cloud: engineName = "Cloud (OpenAI)"
+        }
         let engineItem = NSMenuItem(title: "Engine: \(engineName)", action: nil, keyEquivalent: "")
         engineItem.isEnabled = false
         menu.addItem(engineItem)

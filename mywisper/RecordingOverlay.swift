@@ -22,7 +22,7 @@ class RecordingPanel: NSPanel {
 
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 70),
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 44),
             styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
             backing: .buffered,
             defer: false
@@ -49,8 +49,8 @@ class RecordingPanel: NSPanel {
 
     private func centerOnScreen() {
         guard let screen = NSScreen.main else { return }
-        let x = (screen.frame.width - 300) / 2
-        let y = screen.frame.height - 110
+        let x = (screen.frame.width - 220) / 2
+        let y = screen.frame.height - 90
         self.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
@@ -72,31 +72,28 @@ struct RecordingOverlayView: View {
             // Left: red dot indicator
             ZStack {
                 if state.isRecording {
-                    // Pulsing red dot
                     Circle()
                         .fill(Color.red)
-                        .frame(width: 10, height: 10)
-                        .shadow(color: .red.opacity(0.8), radius: 6)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: .red.opacity(0.8), radius: 4)
                 } else if state.isTranscribing {
                     TranscribingDotsView()
-                        .frame(width: 32, height: 20)
+                        .frame(width: 24, height: 14)
                 }
             }
-            .frame(width: 32)
-            .padding(.leading, 14)
+            .frame(width: 24)
+            .padding(.leading, 10)
 
             // Center: waveform + text + timer
-            VStack(spacing: 2) {
-                HStack(spacing: 8) {
-                    if state.isRecording {
-                        AudioWaveformView(level: CGFloat(state.audioLevel))
-                            .frame(width: 40, height: 22)
-                    }
-
-                    Text(state.statusText)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white)
+            HStack(spacing: 6) {
+                if state.isRecording {
+                    AudioWaveformView(level: CGFloat(state.audioLevel))
+                        .frame(width: 30, height: 16)
                 }
+
+                Text(state.statusText)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white)
 
                 if state.isRecording {
                     RecordingTimerView(elapsed: state.elapsedSeconds)
@@ -112,27 +109,27 @@ struct RecordingOverlayView: View {
                     ZStack {
                         Circle()
                             .fill(Color.white.opacity(0.1))
-                            .frame(width: 32, height: 32)
-                        RoundedRectangle(cornerRadius: 3)
+                            .frame(width: 24, height: 24)
+                        RoundedRectangle(cornerRadius: 2)
                             .fill(Color.red)
-                            .frame(width: 12, height: 12)
+                            .frame(width: 9, height: 9)
                     }
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, 14)
+                .padding(.trailing, 10)
             } else {
-                Spacer().frame(width: 14)
+                Spacer().frame(width: 10)
             }
         }
-        .frame(minWidth: 260, minHeight: 48)
-        .padding(.vertical, 8)
+        .frame(minWidth: 180, minHeight: 32)
+        .padding(.vertical, 5)
         .background(
             ZStack {
                 // Red glow underneath
                 RoundedRectangle(cornerRadius: 24)
                     .fill(Color.red.opacity(state.isRecording ? 0.15 : 0))
-                    .blur(radius: 12)
-                    .offset(y: 4)
+                    .blur(radius: 8)
+                    .offset(y: 3)
 
                 // Main pill background
                 RoundedRectangle(cornerRadius: 24)
