@@ -42,6 +42,8 @@ class RecordingPanel: NSPanel {
         self.animationBehavior = .none
 
         let hostingView = NSHostingView(rootView: RecordingOverlayView(state: state))
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = .clear
         self.contentView = hostingView
 
         centerOnScreen()
@@ -125,12 +127,6 @@ struct RecordingOverlayView: View {
         .padding(.vertical, 5)
         .background(
             ZStack {
-                // Red glow underneath
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color.red.opacity(state.isRecording ? 0.15 : 0))
-                    .blur(radius: 8)
-                    .offset(y: 3)
-
                 // Main pill background
                 RoundedRectangle(cornerRadius: 24)
                     .fill(Color(white: 0.1).opacity(0.92))
@@ -238,7 +234,7 @@ struct AudioBar: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 1.5)
-            .fill(Color.red)
+            .fill(Color.white.opacity(0.7))
             .frame(width: 3, height: barHeight)
             .animation(.easeOut(duration: 0.08), value: level)
     }

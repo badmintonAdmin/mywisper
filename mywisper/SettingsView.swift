@@ -834,6 +834,7 @@ struct SettingsView: View {
 
     @State private var isRecordingHotkey = false
     @State private var isRecordingAIHotkey = false
+    @State private var isRecordingCancelHotkey = false
 
     private var hotkeyTab: some View {
         ScrollView {
@@ -994,6 +995,61 @@ struct SettingsView: View {
                     .frame(width: 0, height: 0)
                 )
 
+                SectionCard(title: "Cancel Hotkey", icon: "xmark.circle", subtitle: "Abort recording or transcription") {
+                    HStack(spacing: 10) {
+                        Text("Current:")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        if isRecordingCancelHotkey {
+                            HStack(spacing: 4) {
+                                ProgressView()
+                                    .controlSize(.mini)
+                                Text("Press any key...")
+                                    .font(.system(size: 12, design: .monospaced))
+                            }
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.orange.opacity(0.5), lineWidth: 1)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.05)))
+                            )
+                        } else {
+                            Text(settings.cancelHotkeyDisplayString)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.red.opacity(0.1))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                                )
+                        }
+                        Button(isRecordingCancelHotkey ? "Cancel" : "Change...") {
+                            isRecordingCancelHotkey.toggle()
+                        }
+                        .controlSize(.small)
+                    }
+
+                    Text("Press this key during recording or transcription to cancel and discard")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .background(
+                    CancelHotkeyRecorderView(
+                        isRecording: $isRecordingCancelHotkey,
+                        onKeyRecorded: { keyCode in
+                            settings.cancelHotkeyKeyCode = keyCode
+                            isRecordingCancelHotkey = false
+                        }
+                    )
+                    .frame(width: 0, height: 0)
+                )
+
                 SectionCard(title: "Menu Bar", icon: "menubar.rectangle") {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Click the mic icon in the menu bar to start/stop recording.")
@@ -1139,6 +1195,56 @@ class HotkeyRecorderNSView: NSView {
             }
 
             self.onHotkeyRecorded?(event.keyCode, mods)
+            return nil
+        }
+    }
+
+    func stopMonitoring() {
+        if let monitor = monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+
+    deinit {
+        stopMonitoring()
+    }
+}
+
+// MARK: - Cancel Hotkey Recorder (single key, no modifiers required)
+
+struct CancelHotkeyRecorderView: NSViewRepresentable {
+    @Binding var isRecording: Bool
+    var onKeyRecorded: (UInt16) -> Void
+
+    func makeNSView(context: Context) -> CancelHotkeyRecorderNSView {
+        let view = CancelHotkeyRecorderNSView()
+        view.onKeyRecorded = onKeyRecorded
+        return view
+    }
+
+    func updateNSView(_ nsView: CancelHotkeyRecorderNSView, context: Context) {
+        nsView.isRecordingKey = isRecording
+        nsView.onKeyRecorded = onKeyRecorded
+        if isRecording {
+            nsView.startMonitoring()
+        } else {
+            nsView.stopMonitoring()
+        }
+    }
+}
+
+class CancelHotkeyRecorderNSView: NSView {
+    var isRecordingKey = false
+    var onKeyRecorded: ((UInt16) -> Void)?
+    private var monitor: Any?
+
+    func startMonitoring() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.isRecordingKey else { return event }
+            // Accept any key (no modifier requirement)
+            self.onKeyRecorded?(event.keyCode)
             return nil
         }
     }

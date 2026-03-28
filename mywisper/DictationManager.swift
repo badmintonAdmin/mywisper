@@ -38,6 +38,7 @@ class DictationManager: ObservableObject {
     private var previousApp: NSRunningApplication?
     private var settingsCancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
+    private var isCancelled = false
 
     init() {
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
@@ -51,6 +52,10 @@ class DictationManager: ObservableObject {
         hotkeyManager.onToggleAI = { [weak self] in
             guard let self = self else { return }
             self.settings.aiProcessingEnabled.toggle()
+        }
+
+        hotkeyManager.onCancel = { [weak self] in
+            self?.cancelOperation()
         }
 
         // Wire audio level metering to overlay (runs at 30fps)
@@ -135,6 +140,11 @@ class DictationManager: ObservableObject {
             self?.applyHotkeySettings()
             self?.hotkeyManager.register()
         }.store(in: &settingsCancellables)
+
+        settings.$cancelHotkeyKeyCode.sink { [weak self] _ in
+            self?.applyHotkeySettings()
+            self?.hotkeyManager.register()
+        }.store(in: &settingsCancellables)
     }
 
     func toggleRecording() {
@@ -143,6 +153,27 @@ class DictationManager: ObservableObject {
         } else {
             startRecording()
         }
+    }
+
+    /// Abort the current recording or transcription without pasting
+    func cancelOperation() {
+        guard isRecording || isTranscribing else { return }
+
+        if isRecording {
+            // Stop recording, discard audio
+            _ = audioRecorder.stopRecordingAndGetURL()
+            isRecording = false
+            print("mywisper: Recording cancelled by user")
+        }
+
+        // Mark transcription as cancelled (in-flight network/whisper calls will complete
+        // but their result will be ignored because isTranscribing is already false)
+        isTranscribing = false
+        isCancelled = true
+        currentTranscription = ""
+        recordingStartTime = nil
+        hotkeyManager.isOperationActive = false
+        hideOverlay()
     }
 
     private func startRecording() {
@@ -203,7 +234,9 @@ class DictationManager: ObservableObject {
         }
 
         isRecording = true
+        isCancelled = false
         recordingStartTime = Date()
+        hotkeyManager.isOperationActive = true
         showOverlay(status: "Recording...")
         recordingPanel?.state.isRecording = true
         recordingPanel?.state.isTranscribing = false
@@ -231,6 +264,9 @@ class DictationManager: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
+                // If the operation was cancelled, discard the result
+                guard !self.isCancelled else { return }
+
                 switch result {
                 case .success(let rawText):
                     if !rawText.isEmpty && self.settings.aiProcessingEnabled && !self.settings.openAIKey.isEmpty {
@@ -253,7 +289,7 @@ class DictationManager: ObservableObject {
                             systemPrompt: effectivePrompt
                         ) { [weak self] aiResult in
                             DispatchQueue.main.async {
-                                guard let self = self else { return }
+                                guard let self = self, !self.isCancelled else { return }
                                 self.isTranscribing = false
                                 self.hideOverlay()
 
@@ -340,6 +376,7 @@ class DictationManager: ObservableObject {
 
     private func hideOverlay() {
         recordingPanel?.hide()
+        hotkeyManager.isOperationActive = false
     }
 
     private func applyHotkeySettings() {
@@ -350,6 +387,7 @@ class DictationManager: ObservableObject {
         hotkeyManager.useAIToggleHotkey = settings.useAIToggleHotkey
         hotkeyManager.aiToggleHotkeyKeyCode = settings.aiToggleHotkeyKeyCode
         hotkeyManager.aiToggleHotkeyModifiers = settings.aiToggleHotkeyModifiers
+        hotkeyManager.cancelHotkeyKeyCode = settings.cancelHotkeyKeyCode
     }
 
     private func checkPermissions() {

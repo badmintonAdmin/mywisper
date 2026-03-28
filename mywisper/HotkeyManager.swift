@@ -29,19 +29,25 @@ class HotkeyManager {
     var aiToggleHotkeyModifiers: NSEvent.ModifierFlags = [.control, .option]
     var useAIToggleHotkey: Bool = false
 
+    // Cancel hotkey settings
+    var cancelHotkeyKeyCode: UInt16 = 53 // Escape
+
+    /// Set to true while recording/transcribing so cancel key is intercepted
+    var isOperationActive = false
+
     var onToggle: (() -> Void)?
     var onToggleAI: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     func register() {
         unregister()
 
-        if useCustomHotkey || useAIToggleHotkey {
-            registerCGEventTap()
-        }
+        // Always register CGEvent tap — needed for ESC cancel,
+        // and also handles custom hotkeys when enabled
+        registerCGEventTap()
 
         // Fn double-tap via NSEvent monitors
         registerFnDoubleTap()
-
     }
 
     // MARK: - CGEvent Tap (global hotkey that works everywhere)
@@ -92,6 +98,14 @@ class HotkeyManager {
                         }
                         return nil // consume the event
                     }
+                }
+
+                // Cancel hotkey cancels current operation when active
+                if keyCode == manager.cancelHotkeyKeyCode && manager.isOperationActive {
+                    DispatchQueue.main.async {
+                        manager.onCancel?()
+                    }
+                    return nil // consume the event
                 }
 
                 return Unmanaged.passUnretained(event)

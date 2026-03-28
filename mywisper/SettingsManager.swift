@@ -152,6 +152,16 @@ class SettingsManager: ObservableObject {
         HotkeyManager.hotkeyDisplayString(modifiers: aiToggleHotkeyModifiers, keyCode: aiToggleHotkeyKeyCode)
     }
 
+    // MARK: - Cancel Hotkey
+
+    @Published var cancelHotkeyKeyCode: UInt16 {
+        didSet { UserDefaults.standard.set(Int(cancelHotkeyKeyCode), forKey: "cancelHotkeyKeyCode") }
+    }
+
+    var cancelHotkeyDisplayString: String {
+        HotkeyManager.keyCodeToString(cancelHotkeyKeyCode)
+    }
+
     // MARK: - Custom Dictionary
 
     @Published var customDictionaryEnabled: Bool {
@@ -237,6 +247,10 @@ class SettingsManager: ObservableObject {
         } else {
             self.aiToggleHotkeyModifiers = [.control, .option]
         }
+
+        // Cancel hotkey: default to Escape (keyCode 53)
+        let storedCancelKeyCode = UserDefaults.standard.integer(forKey: "cancelHotkeyKeyCode")
+        self.cancelHotkeyKeyCode = storedCancelKeyCode > 0 ? UInt16(storedCancelKeyCode) : 53
 
         // AI Processing
         self.aiProcessingEnabled = UserDefaults.standard.bool(forKey: "aiProcessingEnabled")
