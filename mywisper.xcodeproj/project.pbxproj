@@ -34,6 +34,9 @@
 		A8CF8E1A2F70011A0064176F /* PendingRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E1B2F70011A0064176F /* PendingRecording.swift */; };
 		A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */; };
 		A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E3B2F70013A0064176F /* NotificationManager.swift */; };
+		A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */; };
+		A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */; };
+		A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,6 +87,9 @@
 		A8CF8E1B2F70011A0064176F /* PendingRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecording.swift; sourceTree = "<group>"; };
 		A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsStore.swift; sourceTree = "<group>"; };
 		A8CF8E3B2F70013A0064176F /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioExtractor.swift; sourceTree = "<group>"; };
+		A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTranscriptionService.swift; sourceTree = "<group>"; };
+		A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeFileView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +160,9 @@
 				A8CF8E1B2F70011A0064176F /* PendingRecording.swift */,
 				A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */,
 				A8CF8E3B2F70013A0064176F /* NotificationManager.swift */,
+				A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */,
+				A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */,
+				A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */,
 				A8CF8CA22F62817D0064176F /* Assets.xcassets */,
 				A8CF8CA72F62817D0064176F /* Persistence.swift */,
 				A8CF8CAC2F62817D0064176F /* mywisper.entitlements */,
@@ -345,6 +354,9 @@
 				A8CF8E1A2F70011A0064176F /* PendingRecording.swift in Sources */,
 				A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */,
 				A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */,
+				A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */,
+				A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */,
+				A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

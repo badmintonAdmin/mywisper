@@ -10,6 +10,7 @@ import UserNotifications
 
 extension Notification.Name {
     static let retryPendingRequested = Notification.Name("mywisper.retryPendingRequested")
+    static let showFileTranscriptionRequested = Notification.Name("mywisper.showFileTranscriptionRequested")
 }
 
 /// Wraps `UNUserNotificationCenter` to surface failed cloud transcriptions to the user
@@ -20,6 +21,9 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     private let categoryID = "TRANSCRIPTION_FAILED"
     private let retryActionID = "RETRY"
     private let pendingIDKey = "pendingID"
+
+    private let fileDoneCategoryID = "FILE_TRANSCRIBED"
+    private let showActionID = "SHOW"
 
     private var didConfigure = false
 
@@ -41,11 +45,45 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             intentIdentifiers: [],
             options: []
         )
-        center.setNotificationCategories([category])
+
+        let show = UNNotificationAction(
+            identifier: showActionID,
+            title: "Show",
+            options: [.foreground]
+        )
+        let fileDoneCategory = UNNotificationCategory(
+            identifier: fileDoneCategoryID,
+            actions: [show],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        center.setNotificationCategories([category, fileDoneCategory])
 
         center.requestAuthorization(options: [.alert, .sound]) { _, error in
             if let error = error {
                 print("mywisper: notification auth failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func notifyFileTranscribed(sourceName: String, preview: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Transcription ready"
+        content.body = preview.isEmpty
+            ? "\(sourceName) — tap Show to view the text."
+            : "\(sourceName)\n\(preview)\(preview.count >= 120 ? "…" : "")"
+        content.sound = .default
+        content.categoryIdentifier = fileDoneCategoryID
+
+        let request = UNNotificationRequest(
+            identifier: "file-transcribed-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("mywisper: failed to post file-transcribed notification: \(error.localizedDescription)")
             }
         }
     }
@@ -86,16 +124,26 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        guard response.actionIdentifier == retryActionID
-                || response.actionIdentifier == UNNotificationDefaultActionIdentifier
-        else { return }
-        guard let idStr = response.notification.request.content.userInfo[pendingIDKey] as? String,
-              let id = UUID(uuidString: idStr) else { return }
-        NotificationCenter.default.post(
-            name: .retryPendingRequested,
-            object: nil,
-            userInfo: ["id": id]
-        )
+
+        let categoryId = response.notification.request.content.categoryIdentifier
+        let actionId = response.actionIdentifier
+        let isDefaultTap = actionId == UNNotificationDefaultActionIdentifier
+
+        if categoryId == categoryID, actionId == retryActionID || isDefaultTap {
+            guard let idStr = response.notification.request.content.userInfo[pendingIDKey] as? String,
+                  let id = UUID(uuidString: idStr) else { return }
+            NotificationCenter.default.post(
+                name: .retryPendingRequested,
+                object: nil,
+                userInfo: ["id": id]
+            )
+            return
+        }
+
+        if categoryId == fileDoneCategoryID, actionId == showActionID || isDefaultTap {
+            NotificationCenter.default.post(name: .showFileTranscriptionRequested, object: nil)
+            return
+        }
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

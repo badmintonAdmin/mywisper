@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var dictationManager: DictationManager!
     private var settingsWindow: NSWindow?
     private var homeWindow: NSWindow?
+    private var transcribeFileWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set up system notifications first so they're ready by the time the user
@@ -54,6 +55,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.buildMenu()
             }
         }.store(in: &cancellables)
+
+        // Rebuild menu when background file-transcription state changes (status pill).
+        FileTranscriptionService.shared.$menuBarStatus.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.buildMenu()
+            }
+        }.store(in: &cancellables)
+
+        // Notification action "Show" → open the transcribe-file window.
+        NotificationCenter.default.addObserver(
+            forName: .showFileTranscriptionRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openTranscribeFile()
+        }
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -72,6 +89,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildMenu() {
         let menu = NSMenu()
+
+        // Background file-transcription status (only when active)
+        if let fileStatus = FileTranscriptionService.shared.menuBarStatus {
+            let statusItem = NSMenuItem(title: fileStatus, action: nil, keyEquivalent: "")
+            statusItem.isEnabled = false
+            menu.addItem(statusItem)
+
+            let showItem = NSMenuItem(title: "Show Transcription Window…", action: #selector(openTranscribeFile), keyEquivalent: "")
+            showItem.target = self
+            menu.addItem(showItem)
+
+            menu.addItem(.separator())
+        }
 
         // Status
         let statusText: String
@@ -236,6 +266,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
         }
 
+        // Transcribe File
+        let transcribeFileItem = NSMenuItem(title: "Transcribe File...", action: #selector(openTranscribeFile), keyEquivalent: "t")
+        transcribeFileItem.target = self
+        menu.addItem(transcribeFileItem)
+
         // History
         let historyCount = TranscriptionHistory.shared.records.count
         let historyTitle = historyCount > 0 ? "History (\(historyCount))" : "History"
@@ -323,6 +358,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         homeWindow = window
+    }
+
+    @objc private func openTranscribeFile() {
+        if let window = transcribeFileWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = TranscribeFileView()
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Transcribe File"
+        window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        window.setContentSize(NSSize(width: 640, height: 520))
+        window.minSize = NSSize(width: 540, height: 420)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Don't release on close so closing the window doesn't cancel the in-flight task.
+        window.isReleasedWhenClosed = false
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.transcribeFileWindow = nil
+        }
+
+        transcribeFileWindow = window
     }
 
     @objc private func openSettings() {

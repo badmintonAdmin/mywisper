@@ -6,6 +6,8 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+> **Latest release:** 2026-05-06 — see [`installation/mywisper.dmg`](installation/mywisper.dmg)
+
 ## Features
 
 - **Three transcription engines** — Cloud Whisper (OpenAI API, best quality), local whisper.cpp (fully private), or Apple Speech (fast, no model download)
@@ -21,6 +23,7 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 - **Recording overlay** — floating pill with real-time waveform, elapsed timer, and stop button
 - **Transcription history** — searchable list with metadata, copy, and delete
 - **Cloud upload safety net** — auto-retries on transient errors, persists audio on failure so a flaky network or OpenAI outage never costs you a long dictation
+- **Transcribe any file** — drag & drop audio (WAV/MP3/M4A/AAC/FLAC/AIFF) or video (MP4/MOV) up to 60 minutes; runs entirely locally via your installed Whisper model and stays out of the way of live dictation
 
 ## Installation
 
@@ -178,6 +181,25 @@ When using the Cloud (OpenAI) engine, mywisper protects long dictations from net
 
 **Files:** `~/Library/Application Support/mywisper/pending/` — pairs of `{uuid}.wav` (audio) and `{uuid}.json` (metadata: language, prompt, last error, retry count).
 
+### Transcribe a File
+
+For one-off transcription of a recording you didn't make through mywisper — a podcast episode, an interview, the audio track of a screencast — open **Transcribe File...** from the menu bar (default `⌘T` while the menu is open).
+
+**Supported formats:**
+
+| Type  | Extensions                                  |
+| ----- | ------------------------------------------- |
+| Audio | WAV, MP3, M4A, AAC, FLAC, AIFF              |
+| Video | MP4, MOV, M4V (audio track is extracted)    |
+
+Files up to **60 minutes** are accepted; longer files are rejected up front so you don't wait on something that won't fit. Drop a file into the window or click to browse, then hit **Transcribe**. While the run is in progress you can:
+
+- **Close the window** — the work continues in the background. The menu bar shows `📄 podcast.mp3 — 47%` while it runs and posts a "Transcription ready" notification with a **Show** action when it finishes.
+- **Keep dictating** — the file run uses lower CPU priority (`.utility` QoS) and only half the cores, so live dictation through your hotkey stays responsive.
+- **Cancel** — kills the background process immediately and cleans up the temp file.
+
+The result view shows the full text with **Copy** and **Save as .txt** actions. Everything runs locally through your installed Whisper model (`Settings → General → Whisper Model`) — no audio is sent to any cloud service in this flow.
+
 ### Menu Bar
 
 The menu bar dropdown provides quick access to:
@@ -189,6 +211,8 @@ The menu bar dropdown provides quick access to:
 - **Engine** — current engine display
 - **AI toggle** — enable/disable with preset selector
 - **Pending uploads** — failed cloud transcriptions awaiting retry (shown only when non-empty)
+- **Background file transcription** — `📄 filename.mp3 — N%` (shown only while a file is being transcribed)
+- **Transcribe File...** — open the file-transcription window
 - **History** — open history viewer (shows entry count)
 - **Settings** — open settings window
 
@@ -208,8 +232,13 @@ Hotkey (Fn double-tap / ⌃⌥Space)
     ├── ModelDownloader — HuggingFace model downloads with progress
     ├── TranscriptionHistory — persistent JSON history
     ├── PendingRecordingsStore — on-disk safety net for failed cloud uploads
-    ├── NotificationManager — macOS notifications with Retry action
+    ├── NotificationManager — macOS notifications with Retry / Show actions
     └── SettingsManager — UserDefaults configuration
+
+FileTranscriptionService.shared (independent)
+  ├── AudioExtractor — AVAssetReader/Writer, any audio or video → 16 kHz mono WAV
+  └── WhisperTranscriber — same engine as live dictation, but runs at .utility QoS
+        and uses half the cores so it doesn't fight live dictation for CPU
 ```
 
 **Cloud transcription flow with reliability layer:** Stop recording → copy audio to `pending/{uuid}.wav` → upload → on transient error (timeout / no internet / 5xx / 429) auto-retry up to 3 times with backoff → on success delete from pending → on final failure mark in store + post system notification with Retry action. App startup rehydrates the pending list from disk, so a crash mid-upload becomes a one-click recovery.
