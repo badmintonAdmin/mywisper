@@ -27,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var homeWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Set up system notifications first so they're ready by the time the user
+        // hits a transient cloud failure.
+        NotificationManager.shared.configure()
+
         dictationManager = DictationManager()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -41,6 +45,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self?.buildMenu()
                 self?.updateIcon()
+            }
+        }.store(in: &cancellables)
+
+        // Rebuild menu when the pending list changes (e.g. failures arriving in the background).
+        dictationManager.pendingStore.$items.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.buildMenu()
             }
         }.store(in: &cancellables)
     }
@@ -184,6 +195,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(presetItem)
         }
 
+        // Pending uploads (failed cloud transcriptions awaiting retry)
+        let pendingItems = dictationManager.pendingStore.items
+        if !pendingItems.isEmpty {
+            menu.addItem(.separator())
+
+            let header = NSMenuItem(title: "Pending uploads (\(pendingItems.count))", action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+
+            for item in pendingItems {
+                let timeAgo = formatTimeAgo(item.createdAt)
+                let dur = formatDuration(item.durationSeconds)
+                let title = "\(timeAgo) · \(dur)"
+
+                let row = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+
+                let submenu = NSMenu()
+                let retry = NSMenuItem(title: "Retry", action: #selector(retryPending(_:)), keyEquivalent: "")
+                retry.target = self
+                retry.representedObject = item.id
+                submenu.addItem(retry)
+
+                let discard = NSMenuItem(title: "Discard", action: #selector(discardPending(_:)), keyEquivalent: "")
+                discard.target = self
+                discard.representedObject = item.id
+                submenu.addItem(discard)
+
+                if let err = item.lastError {
+                    submenu.addItem(.separator())
+                    let errItem = NSMenuItem(title: "Error: \(err)", action: nil, keyEquivalent: "")
+                    errItem.isEnabled = false
+                    submenu.addItem(errItem)
+                }
+
+                row.submenu = submenu
+                menu.addItem(row)
+            }
+
+            menu.addItem(.separator())
+        }
+
         // History
         let historyCount = TranscriptionHistory.shared.records.count
         let historyTitle = historyCount > 0 ? "History (\(historyCount))" : "History"
@@ -315,5 +367,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @objc private func retryPending(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID,
+              let recording = dictationManager.pendingStore.recording(with: id) else { return }
+        dictationManager.retryPending(recording)
+    }
+
+    @objc private func discardPending(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        dictationManager.pendingStore.remove(id)
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func formatTimeAgo(_ date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        if interval < 60 { return "just now" }
+        if interval < 3600 { return "\(Int(interval / 60))m ago" }
+        if interval < 86400 { return "\(Int(interval / 3600))h ago" }
+        return "\(Int(interval / 86400))d ago"
     }
 }

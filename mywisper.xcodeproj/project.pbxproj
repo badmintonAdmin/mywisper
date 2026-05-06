@@ -31,6 +31,9 @@
 		A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF32F62817D0064176F /* HomeView.swift */; };
 		A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CF52F62817D0064176F /* OpenAIService.swift */; };
 		A8CF8D002F6F00000064176F /* CloudWhisperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8D012F6F00000064176F /* CloudWhisperService.swift */; };
+		A8CF8E1A2F70011A0064176F /* PendingRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E1B2F70011A0064176F /* PendingRecording.swift */; };
+		A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */; };
+		A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E3B2F70013A0064176F /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +81,9 @@
 		A8CF8CF32F62817D0064176F /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A8CF8CF52F62817D0064176F /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
 		A8CF8D012F6F00000064176F /* CloudWhisperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWhisperService.swift; sourceTree = "<group>"; };
+		A8CF8E1B2F70011A0064176F /* PendingRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecording.swift; sourceTree = "<group>"; };
+		A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsStore.swift; sourceTree = "<group>"; };
+		A8CF8E3B2F70013A0064176F /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -145,6 +151,9 @@
 				A8CF8CF32F62817D0064176F /* HomeView.swift */,
 				A8CF8CF52F62817D0064176F /* OpenAIService.swift */,
 				A8CF8D012F6F00000064176F /* CloudWhisperService.swift */,
+				A8CF8E1B2F70011A0064176F /* PendingRecording.swift */,
+				A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */,
+				A8CF8E3B2F70013A0064176F /* NotificationManager.swift */,
 				A8CF8CA22F62817D0064176F /* Assets.xcassets */,
 				A8CF8CA72F62817D0064176F /* Persistence.swift */,
 				A8CF8CAC2F62817D0064176F /* mywisper.entitlements */,
@@ -333,6 +342,9 @@
 				A8CF8CF22F62817D0064176F /* HomeView.swift in Sources */,
 				A8CF8CF42F62817D0064176F /* OpenAIService.swift in Sources */,
 				A8CF8D002F6F00000064176F /* CloudWhisperService.swift in Sources */,
+				A8CF8E1A2F70011A0064176F /* PendingRecording.swift in Sources */,
+				A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */,
+				A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

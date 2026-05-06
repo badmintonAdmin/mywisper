@@ -82,6 +82,7 @@ struct StatusPill: View {
 
 struct SettingsView: View {
     @ObservedObject var settings = SettingsManager.shared
+    @ObservedObject var pendingStore = PendingRecordingsStore.shared
     @State private var availableModels: [(name: String, path: String)] = []
     @State private var selectedTab: SettingsTab = .general
 
@@ -166,6 +167,10 @@ struct SettingsView: View {
     private var generalTab: some View {
         ScrollView {
             VStack(spacing: 12) {
+                if !pendingStore.items.isEmpty {
+                    pendingUploadsSection
+                }
+
                 SectionCard(title: "Transcription Engine", icon: "waveform", subtitle: "Choose how your speech is converted to text") {
                     Picker("Engine", selection: $settings.engine) {
                         ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
@@ -210,6 +215,108 @@ struct SettingsView: View {
             }
             .padding(16)
         }
+    }
+
+    // MARK: - Pending Uploads Section
+
+    private var pendingUploadsSection: some View {
+        SectionCard(
+            title: "Pending Uploads",
+            icon: "tray.and.arrow.up.fill",
+            subtitle: "Cloud transcriptions waiting to be retried"
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 12))
+                    Text("\(pendingStore.items.count) recording\(pendingStore.items.count == 1 ? "" : "s") saved after a failed upload")
+                        .font(.system(size: 12))
+                    Spacer()
+                }
+
+                VStack(spacing: 6) {
+                    ForEach(pendingStore.items) { item in
+                        pendingUploadRow(item)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pendingUploadRow(_ item: PendingRecording) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "waveform.path")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(formatPendingTitle(item))
+                    .font(.system(size: 12, weight: .medium))
+                if let err = item.lastError {
+                    Text(err)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                } else {
+                    Text("Awaiting retry")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                requestRetry(item)
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+            .controlSize(.small)
+
+            Button {
+                pendingStore.remove(item.id)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12))
+                    .foregroundColor(.red.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .help("Discard")
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private func formatPendingTitle(_ item: PendingRecording) -> String {
+        let dur = Int(item.durationSeconds.rounded())
+        let durStr = String(format: "%d:%02d", dur / 60, dur % 60)
+        let interval = Date().timeIntervalSince(item.createdAt)
+        let ago: String
+        if interval < 60 { ago = "just now" }
+        else if interval < 3600 { ago = "\(Int(interval / 60))m ago" }
+        else if interval < 86400 { ago = "\(Int(interval / 3600))h ago" }
+        else { ago = "\(Int(interval / 86400))d ago" }
+        return "\(ago) · \(durStr)"
+    }
+
+    private func requestRetry(_ item: PendingRecording) {
+        // Defer to DictationManager via a NotificationCenter event so we don't
+        // need to plumb a reference into SettingsView.
+        NotificationCenter.default.post(
+            name: .retryPendingRequested,
+            object: nil,
+            userInfo: ["id": item.id]
+        )
     }
 
     // MARK: - Whisper Model Section

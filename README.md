@@ -20,12 +20,13 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 - **Auto-paste** — transcribed text is pasted directly into the focused app via simulated Cmd+V
 - **Recording overlay** — floating pill with real-time waveform, elapsed timer, and stop button
 - **Transcription history** — searchable list with metadata, copy, and delete
+- **Cloud upload safety net** — auto-retries on transient errors, persists audio on failure so a flaky network or OpenAI outage never costs you a long dictation
 
 ## Installation
 
 ### From DMG
 
-1. Download `mywisper.dmg` from [mywhisper.cloud](https://mywhisper.cloud/)
+1. Download `mywisper.dmg` from [mywhisper.cloud](https://mywhisper.cloud/) — or grab the latest build from [`installation/mywisper.dmg`](installation/mywisper.dmg) in this repo
 2. Open the DMG and drag **mywisper** to Applications
 3. Launch mywisper — it appears in the menu bar (microphone icon)
 4. Grant permissions when prompted (see [Permissions](#permissions))
@@ -159,6 +160,24 @@ Access history from the menu bar → History. Each entry shows:
 
 History is searchable and stored in `~/Library/Application Support/mywisper/history.json`.
 
+### Cloud Transcription Reliability
+
+When using the Cloud (OpenAI) engine, mywisper protects long dictations from network glitches and API outages so you never have to redictate.
+
+**How it works:**
+
+1. **Save before sending.** As soon as you stop recording, the audio is copied to `~/Library/Application Support/mywisper/pending/{uuid}.wav` *before* the upload begins. If the app or laptop crashes mid-upload, the audio survives.
+2. **Auto-retry on transient errors.** Network timeouts, lost connections, DNS hiccups, OpenAI 5xx, and rate limits (429) trigger up to 2 silent retries (~2s, then ~5s backoff) — the recording overlay shows `Retrying 2/3...` so you know what's happening.
+3. **Persist on final failure.** If retries are exhausted (or the error is permanent, like a bad API key), the audio stays on disk and a macOS notification fires with a **Retry** action button.
+4. **Recover anytime.** A "Pending uploads" section appears in the menu bar dropdown and in Settings → General. Each row has Retry / Discard buttons. On app start the list is rehydrated from disk, so a crash recovery is just one click.
+5. **Auto-cleanup.** Successful retries delete the pending files. Anything older than 30 days is purged on startup.
+
+**What doesn't trigger retries:** authentication failures (401) and other 4xx errors — those would just fail again, so the audio is saved straight to pending for manual investigation.
+
+**Cancel any time.** Hitting your Cancel hotkey during a retry aborts and discards the pending audio (so cancellation always cleans up after itself).
+
+**Files:** `~/Library/Application Support/mywisper/pending/` — pairs of `{uuid}.wav` (audio) and `{uuid}.json` (metadata: language, prompt, last error, retry count).
+
 ### Menu Bar
 
 The menu bar dropdown provides quick access to:
@@ -169,6 +188,7 @@ The menu bar dropdown provides quick access to:
 - **Language** — switch between English and Russian
 - **Engine** — current engine display
 - **AI toggle** — enable/disable with preset selector
+- **Pending uploads** — failed cloud transcriptions awaiting retry (shown only when non-empty)
 - **History** — open history viewer (shows entry count)
 - **Settings** — open settings window
 
@@ -179,7 +199,7 @@ Hotkey (Fn double-tap / ⌃⌥Space)
   → DictationManager (orchestrator)
     ├── AudioRecorder — AVAudioRecorder, 16kHz mono PCM + real-time metering
     ├── WhisperTranscriber — whisper.cpp CLI transcription (local)
-    ├── CloudWhisperService — OpenAI Whisper API transcription (cloud)
+    ├── CloudWhisperService — OpenAI Whisper API + transient/permanent error classifier
     ├── SpeechTranscriber — Apple Speech framework (local)
     ├── OpenAIService — AI post-processing via Chat Completions API
     ├── TextPaster — NSPasteboard + CGEvent Cmd+V simulation
@@ -187,10 +207,14 @@ Hotkey (Fn double-tap / ⌃⌥Space)
     ├── HotkeyManager — CGEventTap + NSEvent monitoring
     ├── ModelDownloader — HuggingFace model downloads with progress
     ├── TranscriptionHistory — persistent JSON history
+    ├── PendingRecordingsStore — on-disk safety net for failed cloud uploads
+    ├── NotificationManager — macOS notifications with Retry action
     └── SettingsManager — UserDefaults configuration
 ```
 
-**Flow:** Hotkey → start recording → stop → transcribe (engine-dependent) → optional AI processing → optional dictionary replacements → copy to clipboard → simulate Cmd+V paste → save to history.
+**Cloud transcription flow with reliability layer:** Stop recording → copy audio to `pending/{uuid}.wav` → upload → on transient error (timeout / no internet / 5xx / 429) auto-retry up to 3 times with backoff → on success delete from pending → on final failure mark in store + post system notification with Retry action. App startup rehydrates the pending list from disk, so a crash mid-upload becomes a one-click recovery.
+
+**Standard flow:** Hotkey → start recording → stop → transcribe (engine-dependent) → optional AI processing → optional dictionary replacements → copy to clipboard → simulate Cmd+V paste → save to history.
 
 ## Settings
 
@@ -198,6 +222,7 @@ All settings are accessible from the menu bar → Settings, organized in three t
 
 ### General
 
+- **Pending uploads** — list of failed cloud transcriptions with Retry / Discard (shown only when non-empty)
 - Transcription engine selection (Apple / Whisper / Cloud)
 - Whisper model management (download, select, browse)
 - whisper-cli binary path

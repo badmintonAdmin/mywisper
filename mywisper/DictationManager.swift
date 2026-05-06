@@ -33,12 +33,16 @@ class DictationManager: ObservableObject {
     private let hotkeyManager = HotkeyManager()
     private let settings = SettingsManager.shared
     private let history = TranscriptionHistory.shared
+    let pendingStore = PendingRecordingsStore.shared
+    private let notificationManager = NotificationManager.shared
     var recordingPanel: RecordingPanel?
     private var permissionsChecked = false
     private var previousApp: NSRunningApplication?
     private var settingsCancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
     private var isCancelled = false
+    /// ID of the in-flight pending recording (cloud only); nil if no cloud request is active.
+    private var currentPendingID: UUID?
 
     init() {
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
@@ -145,6 +149,14 @@ class DictationManager: ObservableObject {
             self?.applyHotkeySettings()
             self?.hotkeyManager.register()
         }.store(in: &settingsCancellables)
+
+        // Retry from system notification
+        NotificationCenter.default.publisher(for: .retryPendingRequested)
+            .sink { [weak self] note in
+                guard let id = note.userInfo?["id"] as? UUID else { return }
+                DispatchQueue.main.async { self?.retryPendingByID(id) }
+            }
+            .store(in: &settingsCancellables)
     }
 
     func toggleRecording() {
@@ -164,6 +176,13 @@ class DictationManager: ObservableObject {
             _ = audioRecorder.stopRecordingAndGetURL()
             isRecording = false
             print("mywisper: Recording cancelled by user")
+        }
+
+        // Discard any pending audio that we copied to the persistent store before sending —
+        // the user explicitly aborted, so don't keep it on disk.
+        if let id = currentPendingID {
+            pendingStore.remove(id)
+            currentPendingID = nil
         }
 
         // Mark transcription as cancelled (in-flight network/whisper calls will complete
@@ -260,7 +279,92 @@ class DictationManager: ObservableObject {
             return
         }
 
-        let completionHandler: (Result<String, Error>) -> Void = { [weak self] result in
+        let completionHandler = makeTranscriptionCompletionHandler()
+
+        switch settings.engine {
+        case .apple:
+            speechTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
+        case .whisper:
+            whisperTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
+        case .cloud:
+            // Persist audio BEFORE sending so it survives a crash and can be retried.
+            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            guard let pending = pendingStore.enqueue(
+                audioFileURL: url,
+                language: selectedLanguage,
+                prompt: settings.vocabularyPromptHint(),
+                duration: duration
+            ) else {
+                print("mywisper: Failed to persist audio for cloud transcription")
+                completionHandler(.failure(CloudWhisperError.cannotReadAudioFile))
+                return
+            }
+            currentPendingID = pending.id
+            transcribeCloudWithRetry(pending: pending, completion: completionHandler)
+        }
+    }
+
+    /// Transcribe via cloud Whisper with automatic retries on transient errors.
+    /// On final failure, leaves audio in `pendingStore` and posts a system notification.
+    private func transcribeCloudWithRetry(
+        pending: PendingRecording,
+        attempt: Int = 1,
+        maxAttempts: Int = 3,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        let audioURL = pendingStore.audioURL(for: pending)
+        cloudWhisperService.transcribe(
+            audioFileURL: audioURL,
+            apiKey: settings.openAIKey,
+            language: pending.language,
+            prompt: pending.prompt
+        ) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let text):
+                DispatchQueue.main.async {
+                    self.pendingStore.remove(pending.id)
+                    if self.currentPendingID == pending.id { self.currentPendingID = nil }
+                }
+                completion(.success(text))
+
+            case .failure(let error):
+                let canRetry = CloudWhisperService.isTransient(error)
+                    && attempt < maxAttempts
+                    && !self.isCancelled
+
+                if canRetry {
+                    let delay: TimeInterval = attempt == 1 ? 2.0 : 5.0
+                    DispatchQueue.main.async {
+                        self.recordingPanel?.state.statusText = "Retrying \(attempt + 1)/\(maxAttempts)..."
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        guard !self.isCancelled else { return }
+                        self.transcribeCloudWithRetry(
+                            pending: pending,
+                            attempt: attempt + 1,
+                            maxAttempts: maxAttempts,
+                            completion: completion
+                        )
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.pendingStore.markFailed(pending.id, error: error)
+                        if !self.isCancelled {
+                            self.notificationManager.notifyTranscriptionFailed(pending: pending, error: error)
+                        }
+                        if self.currentPendingID == pending.id { self.currentPendingID = nil }
+                    }
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
+    /// Builds the shared completion handler used for both initial transcription and retries.
+    /// Handles AI post-processing, history, paste, and overlay teardown.
+    private func makeTranscriptionCompletionHandler() -> (Result<String, Error>) -> Void {
+        return { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
@@ -346,21 +450,33 @@ class DictationManager: ObservableObject {
                 }
             }
         }
+    }
 
-        switch settings.engine {
-        case .apple:
-            speechTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
-        case .whisper:
-            whisperTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
-        case .cloud:
-            cloudWhisperService.transcribe(
-                audioFileURL: url,
-                apiKey: settings.openAIKey,
-                language: selectedLanguage,
-                prompt: settings.vocabularyPromptHint(),
-                completion: completionHandler
-            )
-        }
+    /// Public entry point for retrying a previously failed cloud transcription
+    /// (called from the menu bar or a notification action).
+    func retryPending(_ pending: PendingRecording) {
+        guard !isRecording, !isTranscribing else { return }
+
+        // Capture whatever app is currently frontmost. For menu bar retries this is still
+        // the user's editor; for notification retries this becomes mywisper itself, so
+        // paste won't go anywhere useful — but the text always lands in the clipboard.
+        previousApp = NSWorkspace.shared.frontmostApplication
+        recordingStartTime = Date().addingTimeInterval(-pending.durationSeconds)
+        isCancelled = false
+        currentPendingID = pending.id
+        isTranscribing = true
+        currentTranscription = ""
+        showOverlay(status: "Retrying upload...")
+        recordingPanel?.state.isRecording = false
+        recordingPanel?.state.isTranscribing = true
+        hotkeyManager.isOperationActive = true
+
+        transcribeCloudWithRetry(pending: pending, completion: makeTranscriptionCompletionHandler())
+    }
+
+    fileprivate func retryPendingByID(_ id: UUID) {
+        guard let pending = pendingStore.recording(with: id) else { return }
+        retryPending(pending)
     }
 
     private func showOverlay(status: String) {

@@ -18,7 +18,7 @@ class CloudWhisperService {
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         guard !apiKey.isEmpty else {
-            completion(.failure(OpenAIError.noAPIKey))
+            completion(.failure(CloudWhisperError.noAPIKey))
             return
         }
 
@@ -65,6 +65,10 @@ class CloudWhisperService {
         request.httpBody = body
 
         URLSession.shared.dataTask(with: request) { data, response, error in
+            if let urlError = error as? URLError {
+                completion(.failure(CloudWhisperError.network(urlError)))
+                return
+            }
             if let error = error {
                 completion(.failure(error))
                 return
@@ -73,18 +77,19 @@ class CloudWhisperService {
             let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
 
             guard let data = data else {
-                completion(.failure(OpenAIError.noResponse))
+                completion(.failure(CloudWhisperError.noResponse))
                 return
             }
 
             // Check HTTP status
             if httpStatus != 200 {
-                let body = String(data: data, encoding: .utf8) ?? "unknown"
+                let body: String
                 if let errorResponse = try? JSONDecoder().decode(OpenAIService.ErrorResponse.self, from: data) {
-                    completion(.failure(OpenAIError.apiError(errorResponse.error.message)))
+                    body = errorResponse.error.message
                 } else {
-                    completion(.failure(OpenAIError.apiError("HTTP \(httpStatus): \(body)")))
+                    body = String(data: data, encoding: .utf8) ?? "unknown"
                 }
+                completion(.failure(CloudWhisperError.httpStatus(code: httpStatus, body: body)))
                 return
             }
 
@@ -93,19 +98,65 @@ class CloudWhisperService {
                 let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 completion(.success(cleaned))
             } else {
-                completion(.failure(OpenAIError.emptyResponse))
+                completion(.failure(CloudWhisperError.emptyResponse))
             }
         }.resume()
+    }
+
+    /// Classifies whether an error is worth retrying. Network glitches, request timeouts,
+    /// rate limits and 5xx are transient; auth and client errors are not.
+    static func isTransient(_ error: Error) -> Bool {
+        if case CloudWhisperError.network(let urlErr) = error {
+            return [
+                .timedOut,
+                .notConnectedToInternet,
+                .networkConnectionLost,
+                .cannotConnectToHost,
+                .dnsLookupFailed,
+                .cannotFindHost,
+                .resourceUnavailable
+            ].contains(urlErr.code)
+        }
+        if let urlErr = error as? URLError {
+            return [
+                .timedOut,
+                .notConnectedToInternet,
+                .networkConnectionLost,
+                .cannotConnectToHost,
+                .dnsLookupFailed,
+                .cannotFindHost,
+                .resourceUnavailable
+            ].contains(urlErr.code)
+        }
+        if case CloudWhisperError.httpStatus(let code, _) = error {
+            return code == 429 || (500...599).contains(code)
+        }
+        return false
     }
 }
 
 enum CloudWhisperError: Error, LocalizedError {
+    case noAPIKey
     case cannotReadAudioFile
+    case network(URLError)
+    case httpStatus(code: Int, body: String)
+    case noResponse
+    case emptyResponse
 
     var errorDescription: String? {
         switch self {
+        case .noAPIKey:
+            return "OpenAI API key not set. Add it in Settings → AI Processing."
         case .cannotReadAudioFile:
             return "Cannot read audio file for cloud transcription."
+        case .network(let urlErr):
+            return "Network error: \(urlErr.localizedDescription)"
+        case .httpStatus(let code, let body):
+            return "OpenAI HTTP \(code): \(body)"
+        case .noResponse:
+            return "No response from OpenAI."
+        case .emptyResponse:
+            return "Empty response from OpenAI."
         }
     }
 }
