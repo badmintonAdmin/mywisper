@@ -83,8 +83,10 @@ struct StatusPill: View {
 struct SettingsView: View {
     @ObservedObject var settings = SettingsManager.shared
     @ObservedObject var pendingStore = PendingRecordingsStore.shared
+    @ObservedObject var launchAtLogin = LaunchAtLoginManager.shared
     @State private var availableModels: [(name: String, path: String)] = []
     @State private var selectedTab: SettingsTab = .general
+    @State private var availableInputDevices: [AudioInputDevice] = []
 
     enum SettingsTab: String, CaseIterable {
         case general = "General"
@@ -129,6 +131,7 @@ struct SettingsView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
             availableModels = settings.findAvailableModels()
+            availableInputDevices = AudioInputDevices.available()
         }
     }
 
@@ -200,20 +203,78 @@ struct SettingsView: View {
                     }
                 }
 
-                SectionCard(title: "Language", icon: "globe", subtitle: "Speech recognition language") {
+                SectionCard(title: "Language", icon: "globe", subtitle: "Speech recognition language ('Auto' detects automatically)") {
                     Picker("Recognition Language", selection: $settings.selectedLanguage) {
-                        HStack(spacing: 6) {
-                            Text("English")
-                        }.tag("en-US")
-                        HStack(spacing: 6) {
-                            Text("Русский")
-                        }.tag("ru-RU")
+                        ForEach(DictationLanguage.all) { lang in
+                            Text(lang.displayName).tag(lang.code)
+                        }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     .labelsHidden()
+                }
+
+                SectionCard(title: "Microphone", icon: "mic", subtitle: "Audio input device for recording") {
+                    HStack(spacing: 8) {
+                        Picker("Input Device", selection: $settings.selectedInputDeviceID) {
+                            Text("System Default").tag("")
+                            ForEach(availableInputDevices) { device in
+                                Text(device.name).tag(device.uniqueID)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+
+                        Button {
+                            availableInputDevices = AudioInputDevices.available()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Refresh device list")
+                    }
+
+                    if !settings.selectedInputDeviceID.isEmpty
+                        && !availableInputDevices.contains(where: { $0.uniqueID == settings.selectedInputDeviceID }) {
+                        Text("Selected device is unavailable — recording will use the system default.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                SectionCard(title: "Startup", icon: "power", subtitle: "Run mywisper automatically") {
+                    Toggle(isOn: Binding(
+                        get: { launchAtLogin.isEnabled },
+                        set: { launchAtLogin.setEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Launch at login")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Start mywisper automatically when you log in")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                }
+
+                SectionCard(title: "Setup", icon: "checklist", subtitle: "Permissions & engine") {
+                    HStack {
+                        Text("Re-run the first-launch checklist to verify permissions.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button {
+                            NotificationCenter.default.post(name: .showOnboardingRequested, object: nil)
+                        } label: {
+                            Label("Open Setup Guide", systemImage: "sparkles")
+                        }
+                        .controlSize(.small)
+                    }
                 }
             }
             .padding(16)
+            .onAppear { launchAtLogin.refresh() }
         }
     }
 
@@ -547,6 +608,15 @@ struct SettingsView: View {
     @State private var editingPresetId: UUID?
     @State private var showAPIKey = false
 
+    // OpenAI key validation ("Test key" button)
+    enum KeyTestState: Equatable {
+        case idle
+        case testing
+        case success
+        case failure(String)
+    }
+    @State private var keyTestState: KeyTestState = .idle
+
     private var aiProcessingTab: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -701,7 +771,24 @@ struct SettingsView: View {
                                     .font(.system(size: 12))
                             }
                             .controlSize(.small)
+
+                            Button {
+                                testOpenAIKey()
+                            } label: {
+                                if keyTestState == .testing {
+                                    HStack(spacing: 4) {
+                                        ProgressView().controlSize(.mini)
+                                        Text("Testing…")
+                                    }
+                                } else {
+                                    Text("Test key")
+                                }
+                            }
+                            .controlSize(.small)
+                            .disabled(settings.openAIKey.isEmpty || keyTestState == .testing)
                         }
+
+                        keyTestStatusView
 
                         if settings.openAIKey.isEmpty {
                             HStack(spacing: 4) {
@@ -714,6 +801,10 @@ struct SettingsView: View {
                         } else {
                             StatusPill(text: "API key configured", icon: "checkmark.circle.fill", isGood: true)
                         }
+                    }
+                    .onChange(of: settings.openAIKey) { _ in
+                        // Stale result once the key is edited.
+                        keyTestState = .idle
                     }
 
                     // Model
@@ -785,6 +876,40 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $isEditingPreset) {
             presetEditorSheet
+        }
+    }
+
+    @ViewBuilder
+    private var keyTestStatusView: some View {
+        switch keyTestState {
+        case .idle, .testing:
+            EmptyView()
+        case .success:
+            StatusPill(text: "Key is valid", icon: "checkmark.circle.fill", isGood: true)
+        case .failure(let message):
+            HStack(spacing: 4) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                Text(message)
+                    .font(.system(size: 11))
+                    .lineLimit(2)
+            }
+            .foregroundColor(.red)
+        }
+    }
+
+    private func testOpenAIKey() {
+        let key = settings.openAIKey
+        keyTestState = .testing
+        OpenAIService.shared.validateKey(key) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    keyTestState = .success
+                case .failure(let error):
+                    keyTestState = .failure(error.localizedDescription)
+                }
+            }
         }
     }
 

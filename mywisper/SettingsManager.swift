@@ -7,6 +7,7 @@
 
 import Foundation
 import AppKit
+import ServiceManagement
 
 enum TranscriptionEngine: String, CaseIterable {
     case apple = "apple"
@@ -19,6 +20,47 @@ enum TranscriptionEngine: String, CaseIterable {
         case .whisper: return "Whisper (better quality, slower)"
         case .cloud: return "Cloud (OpenAI Whisper API)"
         }
+    }
+}
+
+/// A speech-recognition language option. `code` is the canonical locale identifier we store
+/// in `selectedLanguage` (e.g. "en-US"); "auto" is a sentinel meaning "let the engine detect".
+struct DictationLanguage: Identifiable, Equatable {
+    let code: String
+    let displayName: String
+    var id: String { code }
+
+    /// True for the special "detect language automatically" option.
+    var isAuto: Bool { code == DictationLanguage.autoCode }
+
+    static let autoCode = "auto"
+
+    /// ISO-639-1 code passed to Whisper / OpenAI (first 2 chars of the locale), or "auto".
+    var isoCode: String {
+        isAuto ? DictationLanguage.autoCode : String(code.prefix(2)).lowercased()
+    }
+
+    /// The full list shown in the menu bar and Settings. Defined in one place so all three
+    /// engines and both UIs stay in sync.
+    static let all: [DictationLanguage] = [
+        DictationLanguage(code: autoCode, displayName: "Auto (detect)"),
+        DictationLanguage(code: "en-US", displayName: "English"),
+        DictationLanguage(code: "ru-RU", displayName: "Русский"),
+        DictationLanguage(code: "es-ES", displayName: "Español"),
+        DictationLanguage(code: "fr-FR", displayName: "Français"),
+        DictationLanguage(code: "de-DE", displayName: "Deutsch"),
+        DictationLanguage(code: "it-IT", displayName: "Italiano"),
+        DictationLanguage(code: "pt-PT", displayName: "Português"),
+        DictationLanguage(code: "nl-NL", displayName: "Nederlands"),
+        DictationLanguage(code: "pl-PL", displayName: "Polski"),
+        DictationLanguage(code: "uk-UA", displayName: "Українська"),
+        DictationLanguage(code: "zh-CN", displayName: "中文"),
+        DictationLanguage(code: "ja-JP", displayName: "日本語"),
+        DictationLanguage(code: "ko-KR", displayName: "한국어"),
+    ]
+
+    static func displayName(for code: String) -> String {
+        all.first(where: { $0.code == code })?.displayName ?? code
     }
 }
 
@@ -86,6 +128,12 @@ class SettingsManager: ObservableObject {
 
     @Published var selectedLanguage: String {
         didSet { UserDefaults.standard.set(selectedLanguage, forKey: "selectedLanguage") }
+    }
+
+    /// Unique ID of the preferred audio input device, or "" to use the system default.
+    /// Matches `AVCaptureDevice.uniqueID`.
+    @Published var selectedInputDeviceID: String {
+        didSet { UserDefaults.standard.set(selectedInputDeviceID, forKey: "selectedInputDeviceID") }
     }
 
     @Published var hotkeyDoubleTapInterval: Double {
@@ -162,6 +210,12 @@ class SettingsManager: ObservableObject {
         HotkeyManager.keyCodeToString(cancelHotkeyKeyCode)
     }
 
+    // MARK: - Onboarding
+
+    @Published var hasCompletedOnboarding: Bool {
+        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
     // MARK: - Custom Dictionary
 
     @Published var customDictionaryEnabled: Bool {
@@ -212,6 +266,7 @@ class SettingsManager: ObservableObject {
         self.engine = TranscriptionEngine(rawValue: engineRaw) ?? .apple
         self.whisperModelPath = UserDefaults.standard.string(forKey: "whisperModelPath") ?? ""
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
+        self.selectedInputDeviceID = UserDefaults.standard.string(forKey: "selectedInputDeviceID") ?? ""
 
         let interval = UserDefaults.standard.double(forKey: "hotkeyDoubleTapInterval")
         self.hotkeyDoubleTapInterval = interval > 0 ? interval : 0.4
@@ -251,6 +306,9 @@ class SettingsManager: ObservableObject {
         // Cancel hotkey: default to Escape (keyCode 53)
         let storedCancelKeyCode = UserDefaults.standard.integer(forKey: "cancelHotkeyKeyCode")
         self.cancelHotkeyKeyCode = storedCancelKeyCode > 0 ? UInt16(storedCancelKeyCode) : 53
+
+        // Onboarding
+        self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
         // AI Processing
         self.aiProcessingEnabled = UserDefaults.standard.bool(forKey: "aiProcessingEnabled")
@@ -398,5 +456,41 @@ class SettingsManager: ObservableObject {
                 models.append((name: name, path: file.path))
             }
         }
+    }
+}
+
+// MARK: - Launch at Login
+
+/// Thin wrapper around `SMAppService.mainApp` (macOS 13+). SMAppService is the source of
+/// truth; `isEnabled` simply mirrors its `.status` so a SwiftUI Toggle can bind to it.
+class LaunchAtLoginManager: ObservableObject {
+    static let shared = LaunchAtLoginManager()
+
+    @Published var isEnabled: Bool = false
+
+    private init() {
+        refresh()
+    }
+
+    func refresh() {
+        isEnabled = SMAppService.mainApp.status == .enabled
+    }
+
+    /// Register/unregister the login item and re-sync `isEnabled` from the new status.
+    func setEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                if SMAppService.mainApp.status != .enabled {
+                    try SMAppService.mainApp.register()
+                }
+            } else {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                }
+            }
+        } catch {
+            print("mywisper: Launch-at-login \(enabled ? "register" : "unregister") failed: \(error.localizedDescription)")
+        }
+        refresh()
     }
 }

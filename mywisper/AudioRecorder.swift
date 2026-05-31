@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import CoreAudio
 
 class AudioRecorder {
     private var recorder: AVAudioRecorder?
@@ -13,6 +14,10 @@ class AudioRecorder {
     private var tempFileURL: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("mywisper_recording.wav")
     }
+
+    /// When we switch the system default input device to honor the user's chosen microphone,
+    /// we stash the previous default here so `stopRecordingAndGetURL()` can restore it.
+    private var previousDefaultInputDeviceID: AudioDeviceID?
 
     /// Current audio level (0.0 to 1.0), updated ~30 times per second
     var onAudioLevel: ((Float) -> Void)?
@@ -26,6 +31,11 @@ class AudioRecorder {
 
     func startRecording() throws {
         try? FileManager.default.removeItem(at: tempFileURL)
+
+        // Honor the user's chosen input device. AVAudioRecorder always records from the system
+        // default input, so temporarily switch the default to the selected device (restored on
+        // stop). Falls back to the current default if the saved device is gone.
+        applySelectedInputDevice()
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
@@ -57,12 +67,39 @@ class AudioRecorder {
         }
     }
 
+    /// Switch the system default input device to the user's chosen microphone, if one is set
+    /// and still present. Stashes the previous default in `previousDefaultInputDeviceID` so we
+    /// can restore it when recording stops. No-op (uses default) when "" / device missing.
+    private func applySelectedInputDevice() {
+        previousDefaultInputDeviceID = nil
+        let savedID = SettingsManager.shared.selectedInputDeviceID
+        guard !savedID.isEmpty else { return }
+
+        guard let target = AudioInputDevices.available().first(where: { $0.uniqueID == savedID }) else {
+            // Saved device is gone — fall back to system default silently.
+            return
+        }
+        if let current = AudioInputDevices.currentDefaultInputDeviceID(), current != target.coreAudioID {
+            previousDefaultInputDeviceID = current
+            AudioInputDevices.setDefaultInputDevice(target.coreAudioID)
+        }
+    }
+
+    /// Restore the system default input device we changed in `applySelectedInputDevice()`.
+    private func restoreDefaultInputDevice() {
+        if let previous = previousDefaultInputDeviceID {
+            AudioInputDevices.setDefaultInputDevice(previous)
+            previousDefaultInputDeviceID = nil
+        }
+    }
+
     /// Stop recording and return the audio file URL
     func stopRecordingAndGetURL() -> URL? {
         meterTimer?.invalidate()
         meterTimer = nil
         onAudioLevel?(0)
         lastRecordingWasTooShort = false
+        restoreDefaultInputDevice()
 
         guard let rec = recorder else { return nil }
 

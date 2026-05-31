@@ -19,8 +19,22 @@ class SpeechTranscriber {
 
     func configure(language: String) {
         self.selectedLanguage = language
-        let locale = Locale(identifier: language)
-        recognizer = SFSpeechRecognizer(locale: locale)
+
+        // Apple's SFSpeechRecognizer has no true "auto" mode, so for "auto" we fall back to the
+        // user's current locale. If the requested locale has no recognizer (or it's unavailable),
+        // gracefully fall back to the current locale and then to en-US.
+        let requested: Locale = (language == DictationLanguage.autoCode)
+            ? Locale.current
+            : Locale(identifier: language)
+
+        var chosen = SFSpeechRecognizer(locale: requested)
+        if chosen == nil || chosen?.isAvailable == false {
+            chosen = SFSpeechRecognizer(locale: Locale.current)
+        }
+        if chosen == nil || chosen?.isAvailable == false {
+            chosen = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        }
+        recognizer = chosen
         recognizer?.supportsOnDeviceRecognition = true
 
         // Request authorization

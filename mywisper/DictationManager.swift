@@ -102,6 +102,14 @@ class DictationManager: ObservableObject {
             }
         }.store(in: &settingsCancellables)
 
+        // The Settings UI writes settings.selectedLanguage directly; mirror it into our own
+        // selectedLanguage (whose didSet re-configures all three engines). Guard against the
+        // echo from our own didSet write to avoid a redundant reconfigure loop.
+        settings.$selectedLanguage.sink { [weak self] language in
+            guard let self = self, self.selectedLanguage != language else { return }
+            self.selectedLanguage = language
+        }.store(in: &settingsCancellables)
+
         settings.$hotkeyDoubleTapInterval.sink { [weak self] interval in
             self?.hotkeyManager.doubleTapInterval = interval
         }.store(in: &settingsCancellables)
@@ -196,6 +204,7 @@ class DictationManager: ObservableObject {
         isCancelled = true
         currentTranscription = ""
         recordingStartTime = nil
+        recordingPanel?.state.progress = nil
         hotkeyManager.isOperationActive = false
         hideOverlay()
     }
@@ -277,6 +286,8 @@ class DictationManager: ObservableObject {
         recordingPanel?.state.statusText = settings.engine == .cloud ? "Cloud Transcribing..." : "Transcribing..."
         recordingPanel?.state.isRecording = false
         recordingPanel?.state.isTranscribing = true
+        // Local Whisper reports a real percentage; other engines stay indeterminate.
+        recordingPanel?.state.progress = settings.engine == .whisper ? 0 : nil
 
         guard let url = audioFileURL else {
             isTranscribing = false
@@ -297,7 +308,14 @@ class DictationManager: ObservableObject {
         case .apple:
             speechTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
         case .whisper:
-            whisperTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
+            whisperTranscriber.transcribe(
+                audioFileURL: url,
+                onProgress: { [weak self] fraction in
+                    guard let self = self, self.isTranscribing, !self.isCancelled else { return }
+                    self.recordingPanel?.state.progress = fraction
+                },
+                completion: completionHandler
+            )
         case .cloud:
             // Persist audio BEFORE sending so it survives a crash and can be retried.
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -387,6 +405,8 @@ class DictationManager: ObservableObject {
                         // AI post-processing step
                         self.recordingPanel?.state.statusText = "AI Processing..."
                         self.recordingPanel?.state.isTranscribing = true
+                        // AI has no real percentage — fall back to the indeterminate indicator.
+                        self.recordingPanel?.state.progress = nil
 
                         var effectivePrompt = self.settings.aiSystemPrompt
                         if let addendum = self.settings.vocabularyAIAddendum() {
@@ -482,6 +502,7 @@ class DictationManager: ObservableObject {
         showOverlay(status: "Retrying upload...")
         recordingPanel?.state.isRecording = false
         recordingPanel?.state.isTranscribing = true
+        recordingPanel?.state.progress = nil
         hotkeyManager.isOperationActive = true
 
         transcribeCloudWithRetry(pending: pending, completion: makeTranscriptionCompletionHandler())
@@ -513,6 +534,9 @@ class DictationManager: ObservableObject {
             recordingPanel?.state.onStop = { [weak self] in
                 self?.toggleRecording()
             }
+            recordingPanel?.state.onCancel = { [weak self] in
+                self?.cancelOperation()
+            }
         }
         recordingPanel?.state.isRecording = false
         recordingPanel?.state.isTranscribing = false
@@ -539,6 +563,35 @@ class DictationManager: ObservableObject {
         }
     }
 
+    /// Undo the most recent auto-paste: restore the prior clipboard and (when Accessibility is
+    /// granted) simulate Cmd+Z into the focused app. Best-effort and safe (no-op if nothing to
+    /// undo). Re-activates the app we pasted into so Cmd+Z lands in the right place.
+    func undoLastPaste() {
+        guard !isRecording, !isTranscribing else { return }
+
+        if let app = previousApp {
+            app.activate(options: .activateIgnoringOtherApps)
+        }
+
+        // Give the target app a moment to become active before simulating Cmd+Z.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self = self else { return }
+            switch self.textPaster.undoLastPaste() {
+            case .nothingToUndo:
+                self.showTransientStatus("Nothing to undo")
+            case .undone:
+                self.showTransientStatus("Undid last paste")
+            case .clipboardRestoredOnly:
+                self.showTransientStatus("Clipboard restored — press ⌘Z to remove text (grant Accessibility)", duration: 4.0)
+            }
+        }
+    }
+
+    /// True when there is a paste that can be undone (drives the menu item's enabled state).
+    var canUndoLastPaste: Bool {
+        textPaster.lastPastedText != nil
+    }
+
     /// Surface a transcription failure. Maps known cases (no speech, cancellation) to friendly
     /// transient statuses; everything else shows the error's description.
     /// Must be called on the main thread.
@@ -563,6 +616,9 @@ class DictationManager: ObservableObject {
             recordingPanel = RecordingPanel()
             recordingPanel?.state.onStop = { [weak self] in
                 self?.toggleRecording()
+            }
+            recordingPanel?.state.onCancel = { [weak self] in
+                self?.cancelOperation()
             }
         }
         recordingPanel?.state.statusText = status

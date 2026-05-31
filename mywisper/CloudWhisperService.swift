@@ -40,9 +40,12 @@ class CloudWhisperService {
         // model field
         body.appendMultipartField(boundary: boundary, name: "model", value: "whisper-1")
 
-        // language field (convert "en-US" → "en", "ru-RU" → "ru")
-        let langCode = String(language.prefix(2)).lowercased()
-        body.appendMultipartField(boundary: boundary, name: "language", value: langCode)
+        // language field (convert "en-US" → "en", "ru-RU" → "ru"). Omit entirely for "auto"
+        // so OpenAI Whisper auto-detects the spoken language.
+        if language != DictationLanguage.autoCode {
+            let langCode = String(language.prefix(2)).lowercased()
+            body.appendMultipartField(boundary: boundary, name: "language", value: langCode)
+        }
 
         // response_format field
         body.appendMultipartField(boundary: boundary, name: "response_format", value: "text")

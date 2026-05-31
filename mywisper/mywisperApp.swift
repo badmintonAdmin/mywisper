@@ -26,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var homeWindow: NSWindow?
     private var transcribeFileWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set up system notifications first so they're ready by the time the user
@@ -70,6 +71,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             self?.openTranscribeFile()
+        }
+
+        // Re-open the onboarding checklist (from Settings) or open Settings (from onboarding).
+        NotificationCenter.default.addObserver(
+            forName: .showOnboardingRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openOnboarding()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .openSettingsRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openSettings()
+        }
+
+        // First launch: show the setup checklist.
+        if !SettingsManager.shared.hasCompletedOnboarding {
+            DispatchQueue.main.async { [weak self] in
+                self?.openOnboarding()
+            }
         }
     }
 
@@ -121,14 +145,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             && !dictationManager.isRecording
             && !dictationManager.isTranscribing {
             let fullText = dictationManager.currentTranscription
-            let displayText: String
-            if fullText.count > 60 {
-                displayText = String(fullText.prefix(57)) + "..."
-            } else {
-                displayText = fullText
-            }
-            let transcriptionItem = NSMenuItem(title: "📋 \(displayText)", action: #selector(copyLastTranscription), keyEquivalent: "c")
+            let transcriptionItem = NSMenuItem(title: "", action: #selector(copyLastTranscription), keyEquivalent: "c")
             transcriptionItem.target = self
+            // Wrap long transcriptions across multiple lines instead of cutting them off at
+            // one line; the full text stays in the tooltip and is copied on click.
+            transcriptionItem.attributedTitle = Self.wrappedMenuTitle(fullText, prefix: "📋 ")
             transcriptionItem.toolTip = fullText
             menu.addItem(transcriptionItem)
         }
@@ -156,21 +177,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(fnHint)
         }
 
+        // Undo last paste
+        let undoItem = NSMenuItem(title: "Undo Last Paste", action: #selector(undoLastPaste), keyEquivalent: "z")
+        undoItem.keyEquivalentModifierMask = [.command, .shift]
+        undoItem.target = self
+        undoItem.isEnabled = dictationManager.canUndoLastPaste
+        menu.addItem(undoItem)
+
         menu.addItem(.separator())
 
         // Language
         let langMenu = NSMenu()
-        let enItem = NSMenuItem(title: "English", action: #selector(selectEnglish), keyEquivalent: "")
-        enItem.target = self
-        enItem.state = dictationManager.selectedLanguage == "en-US" ? .on : .off
-        langMenu.addItem(enItem)
+        for lang in DictationLanguage.all {
+            let item = NSMenuItem(title: lang.displayName, action: #selector(selectLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = lang.code
+            item.state = dictationManager.selectedLanguage == lang.code ? .on : .off
+            langMenu.addItem(item)
+            if lang.isAuto { langMenu.addItem(.separator()) }
+        }
 
-        let ruItem = NSMenuItem(title: "Русский", action: #selector(selectRussian), keyEquivalent: "")
-        ruItem.target = self
-        ruItem.state = dictationManager.selectedLanguage == "ru-RU" ? .on : .off
-        langMenu.addItem(ruItem)
-
-        let langItem = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
+        let langItem = NSMenuItem(title: "Language: \(DictationLanguage.displayName(for: dictationManager.selectedLanguage))", action: nil, keyEquivalent: "")
         langItem.submenu = langMenu
         menu.addItem(langItem)
 
@@ -278,6 +305,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         historyItem.target = self
         menu.addItem(historyItem)
 
+        // Setup Guide (onboarding)
+        let onboardingItem = NSMenuItem(title: "Setup Guide...", action: #selector(openOnboarding), keyEquivalent: "")
+        onboardingItem.target = self
+        menu.addItem(onboardingItem)
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -302,12 +334,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
-    @objc private func selectEnglish() {
-        dictationManager.selectedLanguage = "en-US"
+    @objc private func selectLanguage(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String else { return }
+        dictationManager.selectedLanguage = code
     }
 
-    @objc private func selectRussian() {
-        dictationManager.selectedLanguage = "ru-RU"
+    @objc private func undoLastPaste() {
+        dictationManager.undoLastPaste()
     }
 
     private var currentPresetName: String {
@@ -391,6 +424,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transcribeFileWindow = window
     }
 
+    @objc private func openOnboarding() {
+        if let window = onboardingWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = OnboardingView(onFinish: { [weak self] in
+            self?.onboardingWindow?.close()
+        })
+        let hostingController = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Welcome to mywisper"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.setContentSize(NSSize(width: 520, height: 560))
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        window.isReleasedWhenClosed = false
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            // Closing the window counts as completing onboarding so it won't auto-show again.
+            SettingsManager.shared.hasCompletedOnboarding = true
+            self?.onboardingWindow = nil
+        }
+
+        onboardingWindow = window
+    }
+
     @objc private func openSettings() {
         if let window = settingsWindow {
             window.makeKeyAndOrderFront(nil)
@@ -449,6 +515,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func formatDuration(_ seconds: TimeInterval) -> String {
         let s = Int(seconds.rounded())
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// Build a word-wrapped, multi-line attributed title for the menu so a long transcription
+    /// stays readable instead of being cut off at one line. Caps at `maxChars` (full text is
+    /// still kept in the menu item's tooltip and copied on click).
+    static func wrappedMenuTitle(_ text: String, prefix: String, maxChars: Int = 280, perLine: Int = 48) -> NSAttributedString {
+        let flat = text.replacingOccurrences(of: "\n", with: " ")
+        let capped = flat.count > maxChars
+            ? String(flat.prefix(maxChars)).trimmingCharacters(in: .whitespaces) + " …"
+            : flat
+        var lines: [String] = []
+        var current = ""
+        for word in capped.split(separator: " ", omittingEmptySubsequences: true) {
+            let candidate = current.isEmpty ? String(word) : current + " " + word
+            if candidate.count > perLine && !current.isEmpty {
+                lines.append(current)
+                current = String(word)
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty { lines.append(current) }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        return NSAttributedString(
+            string: prefix + lines.joined(separator: "\n"),
+            attributes: [.font: NSFont.menuFont(ofSize: 0), .paragraphStyle: paragraph]
+        )
     }
 
     private func formatTimeAgo(_ date: Date) -> String {

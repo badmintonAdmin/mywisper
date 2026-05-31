@@ -18,6 +18,7 @@
 		A8CF8CC22F62817E0064176F /* mywisperUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */; };
 		A8CF8CE22F62817D0064176F /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = A8CF8CE12F62817D0064176F /* SwiftWhisper */; };
 		A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD02F62817D0064176F /* AudioRecorder.swift */; };
+		FEEDFACE0000000000000A01 /* AudioInputDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDFACE0000000000000A02 /* AudioInputDevices.swift */; };
 		A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */; };
 		A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD22F62817D0064176F /* HotkeyManager.swift */; };
 		A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD32F62817D0064176F /* TextPaster.swift */; };
@@ -37,6 +38,7 @@
 		A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */; };
 		A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */; };
 		A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */; };
+		A8CF90002F7200000064176F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF90012F7200000064176F /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +73,7 @@
 		A8CF8CBF2F62817E0064176F /* mywisperUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mywisperUITests.swift; sourceTree = "<group>"; };
 		A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mywisperUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		A8CF8CD02F62817D0064176F /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		FEEDFACE0000000000000A02 /* AudioInputDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDevices.swift; sourceTree = "<group>"; };
 		A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
 		A8CF8CD22F62817D0064176F /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		A8CF8CD32F62817D0064176F /* TextPaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPaster.swift; sourceTree = "<group>"; };
@@ -90,6 +93,7 @@
 		A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioExtractor.swift; sourceTree = "<group>"; };
 		A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTranscriptionService.swift; sourceTree = "<group>"; };
 		A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeFileView.swift; sourceTree = "<group>"; };
+		A8CF90012F7200000064176F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -145,6 +149,7 @@
 				A8CF8CA02F62817B0064176F /* ContentView.swift */,
 				A8CF8CD52F62817D0064176F /* DictationManager.swift */,
 				A8CF8CD02F62817D0064176F /* AudioRecorder.swift */,
+				FEEDFACE0000000000000A02 /* AudioInputDevices.swift */,
 				A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */,
 				A8CF8CD22F62817D0064176F /* HotkeyManager.swift */,
 				A8CF8CD32F62817D0064176F /* TextPaster.swift */,
@@ -163,6 +168,7 @@
 				A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */,
 				A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */,
 				A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */,
+				A8CF90012F7200000064176F /* OnboardingView.swift */,
 				A8CF8CA22F62817D0064176F /* Assets.xcassets */,
 				A8CF8CA72F62817D0064176F /* Persistence.swift */,
 				A8CF8CAC2F62817D0064176F /* mywisper.entitlements */,
@@ -338,6 +344,7 @@
 				A8CF8CA12F62817B0064176F /* ContentView.swift in Sources */,
 				A8CF8C9F2F62817B0064176F /* mywisperApp.swift in Sources */,
 				A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */,
+				FEEDFACE0000000000000A01 /* AudioInputDevices.swift in Sources */,
 				A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */,
 				A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */,
 				A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */,
@@ -357,6 +364,7 @@
 				A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */,
 				A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */,
 				A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */,
+				A8CF90002F7200000064176F /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

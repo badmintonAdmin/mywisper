@@ -11,6 +11,8 @@ import UserNotifications
 extension Notification.Name {
     static let retryPendingRequested = Notification.Name("mywisper.retryPendingRequested")
     static let showFileTranscriptionRequested = Notification.Name("mywisper.showFileTranscriptionRequested")
+    static let showOnboardingRequested = Notification.Name("mywisper.showOnboardingRequested")
+    static let openSettingsRequested = Notification.Name("mywisper.openSettingsRequested")
 }
 
 /// Wraps `UNUserNotificationCenter` to surface failed cloud transcriptions to the user

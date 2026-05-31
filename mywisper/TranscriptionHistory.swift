@@ -47,6 +47,34 @@ class TranscriptionHistory: ObservableObject {
         load()
     }
 
+    // MARK: - Statistics
+
+    /// Read-only usage statistics derived from the stored records.
+    struct Stats {
+        var totalTranscriptions: Int
+        var totalWords: Int
+        var totalAudioSeconds: Double
+        /// Approximate time saved vs typing, assuming an average typing speed of 40 WPM
+        /// minus the time actually spent dictating.
+        var timeSavedSeconds: Double
+    }
+
+    var stats: Stats {
+        let totalWords = records.reduce(0) { sum, record in
+            sum + record.text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+        }
+        let totalAudio = records.reduce(0.0) { $0 + $1.durationSeconds }
+        // 40 words/min typing → 1.5s per word. Subtract the dictation time to estimate savings.
+        let typingSeconds = Double(totalWords) * 1.5
+        let saved = max(0, typingSeconds - totalAudio)
+        return Stats(
+            totalTranscriptions: records.count,
+            totalWords: totalWords,
+            totalAudioSeconds: totalAudio,
+            timeSavedSeconds: saved
+        )
+    }
+
     func add(_ record: TranscriptionRecord) {
         records.insert(record, at: 0)
         save()

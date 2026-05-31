@@ -73,10 +73,12 @@ class WhisperTranscriber {
     }
 
     func setLanguage(_ language: String) {
-        if language.starts(with: "ru") {
-            self.language = "ru"
+        // "auto" → let whisper-cli detect the language; otherwise pass the ISO-639-1 code
+        // (first two chars of the locale identifier, e.g. "en-US" → "en").
+        if language == DictationLanguage.autoCode {
+            self.language = "auto"
         } else {
-            self.language = "en"
+            self.language = String(language.prefix(2)).lowercased()
         }
     }
 

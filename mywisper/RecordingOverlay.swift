@@ -14,7 +14,13 @@ class OverlayState: ObservableObject {
     @Published var isRecording: Bool = false
     @Published var isTranscribing: Bool = false
     @Published var elapsedSeconds: TimeInterval = 0
+    /// Determinate transcription progress (0...1). nil → show an indeterminate indicator
+    /// (e.g. AI processing or a cloud upload where no real percentage is available).
+    @Published var progress: Double? = nil
     var onStop: (() -> Void)?
+    /// Triggered by the visible cancel affordance during transcribing — wired to
+    /// DictationManager.cancelOperation().
+    var onCancel: (() -> Void)?
 }
 
 class RecordingPanel: NSPanel {
@@ -100,10 +106,17 @@ struct RecordingOverlayView: View {
                 if state.isRecording {
                     RecordingTimerView(elapsed: state.elapsedSeconds)
                 }
+
+                // Real percentage for long local-Whisper runs; AI/cloud stay indeterminate.
+                if state.isTranscribing, let progress = state.progress {
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.6))
+                }
             }
             .frame(maxWidth: .infinity)
 
-            // Right: stop button
+            // Right: stop button (recording) / cancel affordance (transcribing)
             if state.isRecording {
                 Button {
                     state.onStop?()
@@ -118,6 +131,26 @@ struct RecordingOverlayView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .padding(.trailing, 10)
+            } else if state.isTranscribing {
+                Button {
+                    state.onCancel?()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Esc")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color.white.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Cancel (Esc)")
                 .padding(.trailing, 10)
             } else {
                 Spacer().frame(width: 10)

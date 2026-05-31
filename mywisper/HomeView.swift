@@ -22,6 +22,9 @@ struct HomeView: View {
         VStack(spacing: 0) {
             // Header
             headerSection
+            if !history.records.isEmpty {
+                statsSection
+            }
             searchBar
             Divider()
 
@@ -72,6 +75,56 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 20)
         .padding(.bottom, 10)
+    }
+
+    // MARK: - Statistics
+
+    private var statsSection: some View {
+        let stats = history.stats
+        return HStack(spacing: 10) {
+            statCard(title: "Transcriptions", value: "\(stats.totalTranscriptions)", icon: "text.bubble")
+            statCard(title: "Words", value: "\(stats.totalWords)", icon: "textformat.123")
+            statCard(title: "Audio", value: Self.formatDuration(stats.totalAudioSeconds), icon: "waveform")
+            statCard(title: "Time Saved", value: Self.formatDuration(stats.timeSavedSeconds), icon: "clock.arrow.circlepath")
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+    }
+
+    private func statCard(title: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Text(title)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 16, weight: .semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(NSColor.controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    /// Compact human-readable duration: "45s", "3m 12s", "1h 5m".
+    private static func formatDuration(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m \(s)s" }
+        return "\(s)s"
     }
 
     // MARK: - Search
@@ -248,7 +301,9 @@ struct TranscriptionRow: View {
                 )
 
                 MetadataBadge(
-                    text: record.language.hasPrefix("ru") ? "RU" : "EN",
+                    text: record.language == DictationLanguage.autoCode
+                        ? "AUTO"
+                        : String(record.language.prefix(2)).uppercased(),
                     icon: "globe"
                 )
 
