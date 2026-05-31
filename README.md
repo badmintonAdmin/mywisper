@@ -6,7 +6,9 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-> **Latest release:** 2026-05-06 — see [`installation/mywisper.dmg`](installation/mywisper.dmg)
+> **Latest release:** 2026-05-31
+> - **Apple Silicon (M1/M2/M3/M4):** [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
+> - **Intel:** [`installation/Intel/mywisper.dmg`](installation/Intel/mywisper.dmg)
 
 ## Features
 
@@ -29,7 +31,11 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 
 ### From DMG
 
-1. Download `mywisper.dmg` from [mywhisper.cloud](https://mywhisper.cloud/) — or grab the latest build from [`installation/mywisper.dmg`](installation/mywisper.dmg) in this repo
+1. Download the DMG that matches your Mac — or grab it from [mywhisper.cloud](https://mywhisper.cloud/):
+   - **Apple Silicon (M1/M2/M3/M4):** [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
+   - **Intel:** [`installation/Intel/mywisper.dmg`](installation/Intel/mywisper.dmg)
+
+   > Not sure which? Click  → About This Mac. "Apple M…" = Silicon; "Intel…" = Intel.
 2. Open the DMG and drag **mywisper** to Applications
 3. Launch mywisper — it appears in the menu bar (microphone icon)
 4. Grant permissions when prompted (see [Permissions](#permissions))
@@ -55,7 +61,13 @@ xcodebuild -project mywisper.xcodeproj -scheme mywisper -configuration Release b
 bash scripts/create_dmg.sh
 ```
 
-Creates a styled DMG at `~/Downloads/mywisper.dmg` with drag-to-Applications layout.
+Builds the app for Apple Silicon (arm64), compiles whisper.cpp natively (Metal-accelerated)
+via `scripts/build_whisper.sh`, bundles `whisper-cli` **and all its dylibs** into the app so
+the binary is fully self-contained (`scripts/bundle_whisper.sh` rewrites the load paths to
+`@loader_path`), re-signs the bundle, and writes a styled DMG to `installation/Silicon/mywisper.dmg`.
+
+Build for Intel instead with `ARCH=x86_64 bash scripts/create_dmg.sh` (requires an Intel-capable
+whisper.cpp build). Override the signing identity with `CODESIGN_ID="Developer ID Application: …"`.
 
 ## Permissions
 

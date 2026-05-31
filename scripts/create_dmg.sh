@@ -6,20 +6,25 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 APP_NAME="mywisper"
 DMG_NAME="mywisper.dmg"
-DMG_OUTPUT="$HOME/Downloads/$DMG_NAME"
+DMG_OUTPUT="$PROJECT_DIR/installation/Silicon/$DMG_NAME"
 VOLUME_NAME="mywisper"
 STAGING_DIR="$PROJECT_DIR/build/dmg_staging"
-XCODE_PATH="/Users/barssoft/Downloads/Xcode.app/Contents/Developer"
+# Full Xcode is required (Metal compilation + xcodebuild). Override with DEVELOPER_DIR.
+XCODE_PATH="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+ARCH="${ARCH:-arm64}"            # target arch for both the app and whisper.cpp
+CODESIGN_ID="${CODESIGN_ID:--}"  # "-" = ad-hoc; or a Developer ID for distribution
 BG_DIR="$PROJECT_DIR/build/dmg_background"
 
-echo "=== Building mywisper DMG ==="
+echo "=== Building mywisper DMG ($ARCH) ==="
 
 # 1. Build Release
-echo "[1/6] Building Release..."
+echo "[1/6] Building Release ($ARCH)..."
 DEVELOPER_DIR="$XCODE_PATH" xcodebuild \
     -project "$PROJECT_DIR/mywisper.xcodeproj" \
     -scheme mywisper \
     -configuration Release \
+    ARCHS="$ARCH" \
+    ONLY_ACTIVE_ARCH=NO \
     build \
     CONFIGURATION_BUILD_DIR="$PROJECT_DIR/build/Release" \
     -quiet
@@ -31,21 +36,15 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 echo "  Built: $APP_PATH"
 
-# Bundle whisper-cli binary into the app
-WHISPER_CLI="$HOME/Downloads/whisper.cpp/build/bin/whisper-cli"
-if [ ! -f "$WHISPER_CLI" ]; then
-    # Try /usr/local/bin as fallback
-    WHISPER_CLI="/usr/local/bin/whisper-cli"
-fi
-if [ -f "$WHISPER_CLI" ]; then
-    echo "  Bundling whisper-cli from: $WHISPER_CLI"
-    cp "$WHISPER_CLI" "$APP_PATH/Contents/Resources/whisper-cli"
-    chmod +x "$APP_PATH/Contents/Resources/whisper-cli"
-else
-    echo "ERROR: whisper-cli binary not found. Build whisper.cpp first:"
-    echo "  cd ~/Downloads/whisper.cpp && cmake -B build && cmake --build build --config Release"
-    exit 1
-fi
+# Build whisper.cpp natively if needed, then bundle whisper-cli + ALL its dylibs into the
+# app so the binary is fully self-contained (no dependency on ~/Downloads/whisper.cpp).
+echo "  Ensuring native whisper.cpp build..."
+WHISPER_BUILD="$(DEVELOPER_DIR="$XCODE_PATH" bash "$SCRIPT_DIR/build_whisper.sh" | tail -1)"
+bash "$SCRIPT_DIR/bundle_whisper.sh" "$APP_PATH/Contents/Resources" "$WHISPER_BUILD" "$CODESIGN_ID"
+
+# Re-sign the whole app: we modified Resources after Xcode signed it.
+echo "  Re-signing app bundle..."
+codesign --force --deep --timestamp=none -s "$CODESIGN_ID" "$APP_PATH"
 
 # 2. Create DMG background image
 echo "[2/6] Creating DMG background..."
@@ -67,6 +66,7 @@ fi
 
 # 4. Detach any existing mount and remove old DMG
 echo "[4/6] Cleaning up old DMG..."
+mkdir -p "$(dirname "$DMG_OUTPUT")"
 hdiutil detach "/Volumes/$VOLUME_NAME" -quiet 2>/dev/null || true
 sleep 1
 rm -f "$DMG_OUTPUT"
