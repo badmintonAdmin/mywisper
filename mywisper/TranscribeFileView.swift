@@ -412,10 +412,11 @@ struct TranscribeFileView: View {
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
             Picker("Language", selection: $settings.selectedLanguage) {
-                Text("English").tag("en-US")
-                Text("Русский").tag("ru-RU")
+                ForEach(DictationLanguage.all) { lang in
+                    Text(lang.displayName).tag(lang.code)
+                }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .labelsHidden()
             .frame(maxWidth: 220)
             Spacer()
