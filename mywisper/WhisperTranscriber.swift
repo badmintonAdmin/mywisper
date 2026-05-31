@@ -11,6 +11,18 @@ class WhisperTranscriber {
     private var modelPath: String?
     private var language: String = "en"
 
+    /// Set to true by `cancel()` right before we `terminate()` the running process, so the
+    /// completion handler can distinguish a user-requested cancel from a real crash.
+    private var didRequestCancel = false
+    /// Reference to the in-flight whisper-cli process so `cancel()` can terminate it.
+    private var currentProcess: Process?
+
+    /// Cancel the in-flight transcription (terminates the running whisper-cli process).
+    func cancel() {
+        didRequestCancel = true
+        currentProcess?.terminate()
+    }
+
     /// Path to the whisper.cpp CLI binary (whisper-cli)
     var binaryPath: String {
         get {
@@ -72,10 +84,23 @@ class WhisperTranscriber {
         _ = transcribe(audioFileURL: audioFileURL, threads: nil, qos: .userInitiated, onProgress: nil, completion: completion)
     }
 
+    /// Default thread count when the caller doesn't pass an explicit `threads` value.
+    /// On Apple Silicon, prefer the number of *performance* cores — including the energy
+    /// efficiency cores is counterproductive for whisper. Falls back to the previous
+    /// `cores - 1` heuristic when the perf-core query is unavailable (e.g. Intel) or returns 0.
+    static func defaultThreadCount() -> Int {
+        var perfCores: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("hw.perflevel0.physicalcpu", &perfCores, &size, nil, 0) == 0, perfCores > 0 {
+            return Int(perfCores)
+        }
+        return max(ProcessInfo.processInfo.activeProcessorCount - 1, 1)
+    }
+
     /// Run whisper-cli on the given file. Returns the spawned `Process` so the caller can
     /// `terminate()` it on cancel; nil if the process never started.
     /// - Parameters:
-    ///   - threads: number of threads for whisper-cli (`-t`). nil → cores - 1.
+    ///   - threads: number of threads for whisper-cli (`-t`). nil → performance-core count (Apple Silicon), else cores - 1.
     ///   - qos: process priority. Use `.utility` for background work to spare the foreground dictation path.
     ///   - onProgress: 0...1 callback fired on the main queue while whisper-cli prints progress.
     @discardableResult
@@ -96,16 +121,21 @@ class WhisperTranscriber {
             return nil
         }
 
+        // Reset cancel state for this run.
+        didRequestCancel = false
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
         process.qualityOfService = qos
+        currentProcess = process
 
-        let chosenThreads = threads ?? max(ProcessInfo.processInfo.activeProcessorCount - 1, 1)
+        let chosenThreads = threads ?? Self.defaultThreadCount()
         var args = [
             "-m", modelPath,
             "-f", audioFileURL.path,
             "-l", language,
             "-t", String(chosenThreads),
+            "-fa",          // flash attention (faster + less memory on Metal)
             "-nt",          // no timestamps
         ]
         if onProgress != nil {
@@ -153,15 +183,21 @@ class WhisperTranscriber {
                 let output = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
 
+                let didCancel = self.didRequestCancel
+                self.currentProcess = nil
+
                 if process.terminationStatus != 0 {
                     print("mywisper: whisper-cli failed with status \(process.terminationStatus)")
                     print("mywisper: stderr: \(errorOutput.prefix(200))")
                     DispatchQueue.main.async {
-                        // Treat SIGTERM (15) / SIGKILL (9) as cancellation rather than a generic failure.
-                        if process.terminationReason == .uncaughtSignal {
+                        // Only treat a signal-termination as cancellation when WE asked for it.
+                        // Otherwise an uncaughtSignal is a real crash (missing dylib, bad model,
+                        // out of memory, …) and we surface the underlying reason from stderr.
+                        if didCancel {
                             completion(.failure(WhisperTranscriberError.cancelled))
                         } else {
-                            completion(.failure(WhisperTranscriberError.transcriptionFailed))
+                            let detail = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
+                            completion(.failure(WhisperTranscriberError.transcriptionFailed(detail: String(detail))))
                         }
                     }
                     return
@@ -174,11 +210,19 @@ class WhisperTranscriber {
 
                 DispatchQueue.main.async {
                     onProgress?(1.0)
-                    completion(.success(cleaned))
+                    // An empty cleaned result means whisper only produced artifacts like
+                    // [BLANK_AUDIO]; surface this distinctly so the caller can show
+                    // "No speech detected" instead of silently pasting nothing.
+                    if cleaned.isEmpty {
+                        completion(.failure(WhisperTranscriberError.noSpeechDetected))
+                    } else {
+                        completion(.success(cleaned))
+                    }
                 }
             } catch {
                 print("mywisper: Failed to launch whisper-cli: \(error)")
                 errorPipe.fileHandleForReading.readabilityHandler = nil
+                self.currentProcess = nil
                 DispatchQueue.main.async {
                     completion(.failure(error))
                 }
@@ -193,7 +237,8 @@ enum WhisperTranscriberError: Error, LocalizedError {
     case modelNotLoaded
     case binaryNotFound
     case audioLoadFailed
-    case transcriptionFailed
+    case transcriptionFailed(detail: String)
+    case noSpeechDetected
     case cancelled
 
     var errorDescription: String? {
@@ -204,8 +249,13 @@ enum WhisperTranscriberError: Error, LocalizedError {
             return "whisper-cli binary not found. Build whisper.cpp first."
         case .audioLoadFailed:
             return "Failed to load audio file for Whisper."
-        case .transcriptionFailed:
-            return "Whisper transcription failed."
+        case .transcriptionFailed(let detail):
+            if detail.isEmpty {
+                return "Whisper transcription failed."
+            }
+            return "Whisper transcription failed: \(detail)"
+        case .noSpeechDetected:
+            return "No speech detected."
         case .cancelled:
             return "Transcription cancelled."
         }

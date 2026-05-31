@@ -123,7 +123,9 @@ final class FileTranscriptionService: ObservableObject {
 
     /// Cancels in-flight work, deletes the temp WAV, and returns to idle.
     func cancel() {
-        currentProcess?.terminate()
+        // Route through the transcriber so it flags this as a user-requested cancel and
+        // maps the resulting signal-termination to `.cancelled` rather than a crash.
+        transcriber.cancel()
         currentProcess = nil
 
         currentTask?.cancel()

@@ -17,6 +17,13 @@ class AudioRecorder {
     /// Current audio level (0.0 to 1.0), updated ~30 times per second
     var onAudioLevel: ((Float) -> Void)?
 
+    /// Minimum recording length; anything shorter is discarded as an accidental tap.
+    static let minimumDuration: TimeInterval = 0.3
+
+    /// True when the most recent `stopRecordingAndGetURL()` returned nil specifically because
+    /// the recording was shorter than `minimumDuration` (as opposed to no recorder at all).
+    private(set) var lastRecordingWasTooShort = false
+
     func startRecording() throws {
         try? FileManager.default.removeItem(at: tempFileURL)
 
@@ -55,6 +62,7 @@ class AudioRecorder {
         meterTimer?.invalidate()
         meterTimer = nil
         onAudioLevel?(0)
+        lastRecordingWasTooShort = false
 
         guard let rec = recorder else { return nil }
 
@@ -62,7 +70,8 @@ class AudioRecorder {
         rec.stop()
         self.recorder = nil
 
-        guard duration > 0.3 else {
+        guard duration > Self.minimumDuration else {
+            lastRecordingWasTooShort = true
             return nil
         }
 

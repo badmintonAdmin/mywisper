@@ -61,6 +61,11 @@ struct WhisperModel: Identifiable {
             size: "3.1 GB", quality: "Best",
             url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
         ),
+        WhisperModel(
+            id: "ggml-large-v3-turbo", name: "Large v3 Turbo", fileName: "ggml-large-v3-turbo.bin",
+            size: "1.6 GB", quality: "Best, faster",
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+        ),
     ]
 }
 

@@ -8,6 +8,9 @@ reff/
 .claude/
 CLAUDE.md
 
+# Local planning docs (not committed)
+plans/
+
 # Xcode
 build/
 DerivedData/

@@ -185,6 +185,11 @@ class DictationManager: ObservableObject {
             currentPendingID = nil
         }
 
+        // Terminate the local whisper-cli process if one is running so a user cancel
+        // actually stops the work (cloud/apple in-flight calls complete but their result
+        // is ignored because isCancelled is set below).
+        whisperTranscriber.cancel()
+
         // Mark transcription as cancelled (in-flight network/whisper calls will complete
         // but their result will be ignored because isTranscribing is already false)
         isTranscribing = false
@@ -205,7 +210,7 @@ class DictationManager: ObservableObject {
                 speechTranscriber.configure(language: selectedLanguage)
                 guard speechTranscriber.isReady else {
                     print("mywisper: Speech recognizer not available")
-                    currentTranscription = "Error: Speech recognizer not available"
+                    showTransientStatus("Speech recognizer not available")
                     return
                 }
             }
@@ -217,19 +222,20 @@ class DictationManager: ObservableObject {
                     if let first = models.first {
                         settings.whisperModelPath = first.path
                         print("mywisper: Auto-switched to model: \(first.path)")
+                        showTransientStatus("Selected Whisper model was missing — switched to \(first.name)", duration: 4.0)
                     }
                 }
                 whisperTranscriber.loadModel(path: settings.whisperModelPath)
                 guard whisperTranscriber.isReady else {
                     print("mywisper: Whisper not ready. Model: \(settings.whisperModelPath), Binary: \(whisperTranscriber.binaryPath)")
-                    currentTranscription = "Error: Whisper not ready. Check model & binary in Settings."
+                    showTransientStatus("Whisper not ready — check model & binary in Settings")
                     return
                 }
             }
         case .cloud:
             guard !settings.openAIKey.isEmpty else {
                 print("mywisper: Cloud Whisper requires OpenAI API key")
-                currentTranscription = "Error: OpenAI API key required. Set it in Settings → AI Processing."
+                showTransientStatus("OpenAI API key required — set it in Settings → AI Processing")
                 return
             }
         }
@@ -248,7 +254,7 @@ class DictationManager: ObservableObject {
             try audioRecorder.startRecording()
         } catch {
             print("mywisper: Failed to start recording: \(error.localizedDescription)")
-            currentTranscription = "Error: Failed to start recording. Check microphone permission."
+            showTransientStatus("Failed to start recording — check microphone permission")
             return
         }
 
@@ -273,9 +279,15 @@ class DictationManager: ObservableObject {
         recordingPanel?.state.isTranscribing = true
 
         guard let url = audioFileURL else {
-            print("mywisper: No audio file")
             isTranscribing = false
             hideOverlay()
+            if audioRecorder.lastRecordingWasTooShort {
+                print("mywisper: Recording too short")
+                showTransientStatus("Recording too short")
+            } else {
+                print("mywisper: No audio file")
+                showTransientStatus("Recording failed")
+            }
             return
         }
 
@@ -320,42 +332,40 @@ class DictationManager: ObservableObject {
             prompt: pending.prompt
         ) { [weak self] result in
             guard let self = self else { return }
-            switch result {
-            case .success(let text):
-                DispatchQueue.main.async {
+            // Hop to main before touching isCancelled / currentPendingID so all reads and
+            // writes of that shared state happen on a single thread (no cross-thread races).
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let text):
                     self.pendingStore.remove(pending.id)
                     if self.currentPendingID == pending.id { self.currentPendingID = nil }
-                }
-                completion(.success(text))
+                    completion(.success(text))
 
-            case .failure(let error):
-                let canRetry = CloudWhisperService.isTransient(error)
-                    && attempt < maxAttempts
-                    && !self.isCancelled
+                case .failure(let error):
+                    let canRetry = CloudWhisperService.isTransient(error)
+                        && attempt < maxAttempts
+                        && !self.isCancelled
 
-                if canRetry {
-                    let delay: TimeInterval = attempt == 1 ? 2.0 : 5.0
-                    DispatchQueue.main.async {
+                    if canRetry {
+                        let delay: TimeInterval = attempt == 1 ? 2.0 : 5.0
                         self.recordingPanel?.state.statusText = "Retrying \(attempt + 1)/\(maxAttempts)..."
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                        guard !self.isCancelled else { return }
-                        self.transcribeCloudWithRetry(
-                            pending: pending,
-                            attempt: attempt + 1,
-                            maxAttempts: maxAttempts,
-                            completion: completion
-                        )
-                    }
-                } else {
-                    DispatchQueue.main.async {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            guard !self.isCancelled else { return }
+                            self.transcribeCloudWithRetry(
+                                pending: pending,
+                                attempt: attempt + 1,
+                                maxAttempts: maxAttempts,
+                                completion: completion
+                            )
+                        }
+                    } else {
                         self.pendingStore.markFailed(pending.id, error: error)
                         if !self.isCancelled {
                             self.notificationManager.notifyTranscriptionFailed(pending: pending, error: error)
                         }
                         if self.currentPendingID == pending.id { self.currentPendingID = nil }
+                        completion(.failure(error))
                     }
-                    completion(.failure(error))
                 }
             }
         }
@@ -419,7 +429,7 @@ class DictationManager: ObservableObject {
                                     aiModel: self.settings.openAIModel
                                 )
                                 self.history.add(record)
-                                self.textPaster.paste(text: finalText, previousApp: self.previousApp)
+                                self.pasteAndNotify(finalText)
                             }
                         }
                     } else {
@@ -439,14 +449,17 @@ class DictationManager: ObservableObject {
                                 durationSeconds: recordingDuration
                             )
                             self.history.add(record)
-                            self.textPaster.paste(text: processedText, previousApp: self.previousApp)
+                            self.pasteAndNotify(processedText)
+                        } else {
+                            // Empty result (e.g. silence) — tell the user instead of doing nothing.
+                            self.showTransientStatus("No speech detected")
                         }
                     }
                 case .failure(let error):
                     print("mywisper: Error: \(error)")
                     self.isTranscribing = false
-                    self.currentTranscription = "Error: \(error.localizedDescription)"
                     self.hideOverlay()
+                    self.surfaceTranscriptionError(error)
                 }
             }
         }
@@ -477,6 +490,72 @@ class DictationManager: ObservableObject {
     fileprivate func retryPendingByID(_ id: UUID) {
         guard let pending = pendingStore.recording(with: id) else { return }
         retryPending(pending)
+    }
+
+    /// Token used to invalidate a pending auto-hide when a newer transient status arrives.
+    private var transientStatusToken = 0
+
+    /// Show a brief, self-dismissing status message in the floating panel (e.g. "No speech
+    /// detected", "Recording too short", "Copied to clipboard…"). Used as the app's single
+    /// lightweight error/notice surface so messages no longer vanish into `currentTranscription`.
+    /// Must be called on the main thread.
+    private func showTransientStatus(_ message: String, duration: TimeInterval = 2.5) {
+        // Don't stomp on an active recording/transcription overlay.
+        guard !isRecording && !isTranscribing else {
+            currentTranscription = message
+            return
+        }
+
+        currentTranscription = message
+
+        if recordingPanel == nil {
+            recordingPanel = RecordingPanel()
+            recordingPanel?.state.onStop = { [weak self] in
+                self?.toggleRecording()
+            }
+        }
+        recordingPanel?.state.isRecording = false
+        recordingPanel?.state.isTranscribing = false
+        recordingPanel?.state.statusText = message
+        recordingPanel?.show()
+
+        transientStatusToken += 1
+        let token = transientStatusToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self = self else { return }
+            // Only hide if no newer status/recording superseded this one.
+            guard self.transientStatusToken == token,
+                  !self.isRecording, !self.isTranscribing else { return }
+            self.recordingPanel?.hide()
+        }
+    }
+
+    /// Paste the text and, if Accessibility wasn't granted (so we could only copy), surface a
+    /// brief notice telling the user to press Cmd+V. Must be called on the main thread.
+    private func pasteAndNotify(_ text: String) {
+        let result = textPaster.paste(text: text, previousApp: previousApp)
+        if result == .copiedToClipboardOnly {
+            showTransientStatus("Copied to clipboard — press ⌘V (grant Accessibility to auto-paste)", duration: 4.0)
+        }
+    }
+
+    /// Surface a transcription failure. Maps known cases (no speech, cancellation) to friendly
+    /// transient statuses; everything else shows the error's description.
+    /// Must be called on the main thread.
+    private func surfaceTranscriptionError(_ error: Error) {
+        if let werr = error as? WhisperTranscriberError {
+            switch werr {
+            case .cancelled:
+                // User cancel — no error UI.
+                return
+            case .noSpeechDetected:
+                showTransientStatus("No speech detected")
+                return
+            default:
+                break
+            }
+        }
+        showTransientStatus(error.localizedDescription, duration: 4.0)
     }
 
     private func showOverlay(status: String) {
