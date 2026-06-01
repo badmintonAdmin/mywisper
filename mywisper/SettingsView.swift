@@ -822,9 +822,22 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Presets
-                    SectionCard(title: "Mode Presets", icon: "text.badge.star", subtitle: "Quick-switch between processing modes") {
-                        presetGrid
+                    // Modes
+                    SectionCard(title: "AI Mode", icon: "text.badge.star", subtitle: "How the AI reshapes your dictation before it's pasted") {
+                        // Friendly explainer of the post-processing flow.
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 11))
+                                .foregroundColor(.accentColor)
+                                .padding(.top, 1)
+                            Text("You speak → we transcribe → the selected mode rewrites the text → it gets pasted. Pick a mode below; only one is active at a time.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, 2)
+
+                        modeList
 
                         HStack(spacing: 8) {
                             Button {
@@ -833,23 +846,39 @@ struct SettingsView: View {
                                 editingPresetPrompt = ""
                                 isEditingPreset = true
                             } label: {
-                                Label("Add Custom", systemImage: "plus")
+                                Label("New mode", systemImage: "plus")
                             }
                             .controlSize(.small)
+
+                            Spacer()
 
                             Button {
                                 settings.aiPresets = AIPromptPreset.builtIn
                                 settings.selectedPresetId = nil
                                 settings.aiSystemPrompt = AIPromptPreset.builtIn[0].prompt
                             } label: {
-                                Label("Reset", systemImage: "arrow.counterclockwise")
+                                Label("Reset to defaults", systemImage: "arrow.counterclockwise")
                             }
                             .controlSize(.small)
+                            .help("Restore the six built-in modes and remove custom ones")
                         }
                     }
 
-                    // System Prompt
-                    SectionCard(title: "System Prompt", icon: "text.bubble", subtitle: "Instructions for the AI model") {
+                    // System Prompt (advanced)
+                    SectionCard(title: "System Prompt", icon: "text.bubble", subtitle: "Advanced: the exact instructions sent to the AI") {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "lightbulb")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .padding(.top, 1)
+                            Text(promptDetachedFromPreset
+                                ? "These instructions are no longer tied to a saved mode. Pick a mode above to switch back, or save these as a New mode."
+                                : "This is the active mode's instructions. Editing it here detaches the text from the mode (it becomes a one-off custom prompt).")
+                                .font(.system(size: 11))
+                                .foregroundColor(promptDetachedFromPreset ? .orange : .secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
                         TextEditor(text: $settings.aiSystemPrompt)
                             .font(.system(size: 12, design: .monospaced))
                             .frame(minHeight: 80, maxHeight: 150)
@@ -924,56 +953,87 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Preset Grid
+    // MARK: - Mode List
 
-    private var presetGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+    /// True when the system prompt no longer matches any saved mode (a detached one-off prompt).
+    private var promptDetachedFromPreset: Bool {
+        guard let id = settings.selectedPresetId,
+              let preset = settings.aiPresets.first(where: { $0.id == id }) else { return true }
+        return preset.prompt != settings.aiSystemPrompt
+    }
+
+    private var modeList: some View {
+        VStack(spacing: 6) {
             ForEach(settings.aiPresets) { preset in
-                presetCard(preset)
+                modeRow(preset)
             }
         }
     }
 
-    private func presetCard(_ preset: AIPromptPreset) -> some View {
-        let isSelected = settings.selectedPresetId == preset.id
-        return HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(preset.name)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-                Text(preset.prompt.prefix(40) + "...")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
+    private func modeRow(_ preset: AIPromptPreset) -> some View {
+        let isSelected = settings.selectedPresetId == preset.id && !promptDetachedFromPreset
+        return HStack(spacing: 10) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.4))
+                .font(.system(size: 14))
 
-            // Edit button
-            Menu {
-                Button("Edit") {
-                    editingPresetId = preset.id
-                    editingPresetName = preset.name
-                    editingPresetPrompt = preset.prompt
-                    isEditingPreset = true
-                }
-                if !AIPromptPreset.builtIn.contains(where: { $0.name == preset.name }) {
-                    Divider()
-                    Button("Delete", role: .destructive) {
-                        settings.aiPresets.removeAll { $0.id == preset.id }
-                        if settings.selectedPresetId == preset.id {
-                            settings.selectedPresetId = nil
-                            settings.aiSystemPrompt = AIPromptPreset.builtIn[0].prompt
-                        }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(preset.name)
+                        .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                        .lineLimit(1)
+                    if !preset.isBuiltIn {
+                        Text("Custom")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().fill(Color.secondary.opacity(0.12))
+                            )
                     }
                 }
-            } label: {
-                Image(systemName: "ellipsis")
+                Text(preset.humanDescription)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
-                    .frame(width: 20, height: 20)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .menuStyle(.borderlessButton)
-            .frame(width: 20)
+
+            Spacer(minLength: 0)
+
+            // Explicit Edit affordance.
+            Button {
+                editingPresetId = preset.id
+                editingPresetName = preset.name
+                editingPresetPrompt = preset.prompt
+                isEditingPreset = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .help("Edit or rename this mode")
+
+            // Delete (custom modes only — built-ins are protected).
+            if !preset.isBuiltIn {
+                Button {
+                    settings.aiPresets.removeAll { $0.id == preset.id }
+                    if settings.selectedPresetId == preset.id {
+                        settings.selectedPresetId = nil
+                        settings.aiSystemPrompt = AIPromptPreset.builtIn[0].prompt
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .help("Delete this custom mode")
+            }
         }
         .padding(10)
         .background(
@@ -1066,6 +1126,7 @@ struct SettingsView: View {
 
     @State private var isRecordingHotkey = false
     @State private var isRecordingAIHotkey = false
+    @State private var isRecordingCycleHotkey = false
     @State private var isRecordingCancelHotkey = false
 
     private var hotkeyTab: some View {
@@ -1167,10 +1228,15 @@ struct SettingsView: View {
                     }
                 }
 
-                SectionCard(title: "AI Toggle Hotkey", icon: "brain", subtitle: "Toggle AI processing on/off from any app") {
+                SectionCard(title: "Toggle AI Processing", icon: "brain", subtitle: "Turn AI post-processing on or off from any app") {
                     Toggle(isOn: $settings.useAIToggleHotkey) {
-                        Text("Enable AI toggle hotkey")
-                            .font(.system(size: 13, weight: .medium))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable AI on/off hotkey")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Flip AI post-processing without opening the menu")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .toggleStyle(.switch)
 
@@ -1222,6 +1288,71 @@ struct SettingsView: View {
                             settings.aiToggleHotkeyKeyCode = keyCode
                             settings.aiToggleHotkeyModifiers = modifiers
                             isRecordingAIHotkey = false
+                        }
+                    )
+                    .frame(width: 0, height: 0)
+                )
+
+                SectionCard(title: "Cycle AI Mode", icon: "arrow.triangle.2.circlepath", subtitle: "Switch to the next AI mode from any app") {
+                    Toggle(isOn: $settings.useCycleModeHotkey) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable cycle-mode hotkey")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Step through your AI modes (Clean Up, Translate, …) in order")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+
+                    if settings.useCycleModeHotkey {
+                        HStack(spacing: 10) {
+                            Text("Current:")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            if isRecordingCycleHotkey {
+                                HStack(spacing: 4) {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                    Text("Press a key combination...")
+                                        .font(.system(size: 12, design: .monospaced))
+                                }
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.orange.opacity(0.5), lineWidth: 1)
+                                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.05)))
+                                )
+                            } else {
+                                Text(settings.cycleModeHotkeyDisplayString)
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Color.purple.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                            Button(isRecordingCycleHotkey ? "Cancel" : "Change...") {
+                                isRecordingCycleHotkey.toggle()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                .background(
+                    HotkeyRecorderView(
+                        isRecording: $isRecordingCycleHotkey,
+                        onHotkeyRecorded: { keyCode, modifiers in
+                            settings.cycleModeHotkeyKeyCode = keyCode
+                            settings.cycleModeHotkeyModifiers = modifiers
+                            isRecordingCycleHotkey = false
                         }
                     )
                     .frame(width: 0, height: 0)

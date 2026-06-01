@@ -29,6 +29,11 @@ class HotkeyManager {
     var aiToggleHotkeyModifiers: NSEvent.ModifierFlags = [.control, .option]
     var useAIToggleHotkey: Bool = false
 
+    // Cycle AI mode hotkey settings
+    var cycleModeHotkeyKeyCode: UInt16 = 46 // M
+    var cycleModeHotkeyModifiers: NSEvent.ModifierFlags = [.control, .option]
+    var useCycleModeHotkey: Bool = false
+
     // Cancel hotkey settings
     var cancelHotkeyKeyCode: UInt16 = 53 // Escape
 
@@ -37,6 +42,7 @@ class HotkeyManager {
 
     var onToggle: (() -> Void)?
     var onToggleAI: (() -> Void)?
+    var onCycleMode: (() -> Void)?
     var onCancel: (() -> Void)?
 
     func register() {
@@ -95,6 +101,16 @@ class HotkeyManager {
                     if manager.matchesModifiers(flags, required: manager.aiToggleHotkeyModifiers) {
                         DispatchQueue.main.async {
                             manager.onToggleAI?()
+                        }
+                        return nil // consume the event
+                    }
+                }
+
+                // Check if this matches our cycle-AI-mode hotkey
+                if manager.useCycleModeHotkey && keyCode == manager.cycleModeHotkeyKeyCode {
+                    if manager.matchesModifiers(flags, required: manager.cycleModeHotkeyModifiers) {
+                        DispatchQueue.main.async {
+                            manager.onCycleMode?()
                         }
                         return nil // consume the event
                     }

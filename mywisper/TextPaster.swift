@@ -25,11 +25,13 @@ class TextPaster {
 
     @discardableResult
     func paste(text: String, previousApp: NSRunningApplication?) -> PasteResult {
-        // Put text on clipboard
         let pasteboard = NSPasteboard.general
-        // Remember the previous clipboard so the user can undo this paste.
-        lastClipboardBeforePaste = pasteboard.string(forType: .string) ?? ""
-        lastPastedText = text
+        // Snapshot the user's current clipboard BEFORE we overwrite it. This serves two purposes:
+        //  1) on a successful auto-paste we restore it so the user's clipboard is left untouched;
+        //  2) it backs the "undo last paste" feature.
+        let previousClipboard = pasteboard.string(forType: .string) ?? ""
+
+        // Put the transcription on the clipboard so Cmd+V can pick it up.
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
@@ -38,12 +40,18 @@ class TextPaster {
             app.activate(options: .activateIgnoringOtherApps)
         }
 
-        // Only simulate Cmd+V if accessibility is granted
-        guard AXIsProcessTrusted() else {
+        // We can only auto-paste when Accessibility is granted AND there's an app to paste into.
+        // Otherwise leave the transcription on the clipboard as the fallback (copy-only) and
+        // record the undo bookkeeping accordingly.
+        guard AXIsProcessTrusted(), previousApp != nil else {
+            lastClipboardBeforePaste = previousClipboard
+            lastPastedText = text
             return .copiedToClipboardOnly
         }
 
-        // Wait for the target app to become active, then simulate Cmd+V
+        // Auto-paste path. NOTE: we can't 100% detect that the keystroke actually landed in a
+        // text field (the focused control may be non-editable, or the app may swallow Cmd+V), so
+        // this is best-effort. We assume the paste landed and restore the user's clipboard.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             let source = CGEventSource(stateID: .combinedSessionState)
 
@@ -55,7 +63,23 @@ class TextPaster {
 
             keyDown?.post(tap: .cghidEventTap)
             keyUp?.post(tap: .cghidEventTap)
+
+            // After the Cmd+V keystroke has been consumed by the target app (~0.1s later), restore
+            // the user's original clipboard so dictation doesn't clobber what they had copied.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                pasteboard.clearContents()
+                if !previousClipboard.isEmpty {
+                    pasteboard.setString(previousClipboard, forType: .string)
+                }
+            }
         }
+
+        // Undo bookkeeping: since the clipboard is restored to `previousClipboard` after a
+        // successful paste, undoLastPaste() doesn't need to touch the clipboard itself — there's
+        // nothing left to restore. We record an empty `lastClipboardBeforePaste` to mean "the
+        // clipboard is already in the right state, just simulate Cmd+Z".
+        lastClipboardBeforePaste = ""
+        lastPastedText = text
 
         return .pasted
     }
@@ -70,20 +94,31 @@ class TextPaster {
         case clipboardRestoredOnly
     }
 
-    /// Best-effort undo of the most recent auto-paste: restore the clipboard contents that were
-    /// present before the paste, and (when Accessibility is granted) simulate Cmd+Z into the
-    /// focused app to remove the just-pasted text. No-op if there's nothing to undo.
+    /// Best-effort undo of the most recent paste: simulate Cmd+Z to remove the just-pasted text,
+    /// and make sure the clipboard ends up holding the user's original contents (not the
+    /// transcription). No-op if there's nothing to undo.
+    ///
+    /// Two cases, depending on how the last `paste(...)` resolved:
+    ///  - `.pasted`: the clipboard was already restored to the user's original contents right after
+    ///    the paste, so `lastClipboardBeforePaste` is "" and the restore below is a no-op (correct).
+    ///  - `.copiedToClipboardOnly`: the transcription is still sitting on the clipboard, and
+    ///    `lastClipboardBeforePaste` holds the user's original contents, so we restore them here.
     @discardableResult
     func undoLastPaste() -> UndoResult {
         guard lastPastedText != nil, let previous = lastClipboardBeforePaste else {
             return .nothingToUndo
         }
 
-        // Restore the prior clipboard contents.
+        // Restore the prior clipboard contents (no-op when already restored after a paste).
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        if !previous.isEmpty {
-            pasteboard.setString(previous, forType: .string)
+        let currentClipboard = pasteboard.string(forType: .string) ?? ""
+        // Only rewrite the clipboard if it still holds something other than the user's original
+        // contents (i.e. the copy-only fallback where the transcription is still on the clipboard).
+        if currentClipboard != previous {
+            pasteboard.clearContents()
+            if !previous.isEmpty {
+                pasteboard.setString(previous, forType: .string)
+            }
         }
 
         // Consume the undo state so a second invocation is a safe no-op.

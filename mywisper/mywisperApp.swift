@@ -20,8 +20,12 @@ struct mywisperApp: App {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
+    /// Single persistent menu instance. `buildMenu()` repopulates THIS instance in place so that
+    /// `menuNeedsUpdate(_:)` refreshes the exact menu AppKit is about to show (rebuilding a fresh
+    /// NSMenu and reassigning statusItem.menu would only take effect on the *next* open).
+    private let statusMenu = NSMenu()
     private var dictationManager: DictationManager!
     private var settingsWindow: NSWindow?
     private var homeWindow: NSWindow?
@@ -112,7 +116,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func buildMenu() {
-        let menu = NSMenu()
+        // Repopulate the persistent menu in place (see `statusMenu` docs).
+        let menu = statusMenu
+        menu.removeAllItems()
 
         // Background file-transcription status (only when active)
         if let fileStatus = FileTranscriptionService.shared.menuBarStatus {
@@ -321,7 +327,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
+        // Become the menu's delegate so `menuNeedsUpdate(_:)` rebuilds it right before it opens —
+        // this guarantees the menu reflects current SettingsManager state (AI toggle, engine,
+        // language, preset) even when those change via hotkey and no rebuild publisher fired.
+        menu.delegate = self
         self.statusItem.menu = menu
+    }
+
+    // MARK: - NSMenuDelegate
+
+    /// Called by AppKit immediately before the status-bar menu is displayed. Rebuilding here means
+    /// the menu always shows the live state (e.g. "AI Processing: On/Off" after the ⌃⌥A hotkey),
+    /// regardless of which Combine publisher last fired.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        buildMenu()
     }
 
     @objc private func toggleRecording() {

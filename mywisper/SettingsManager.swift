@@ -87,6 +87,27 @@ struct AIPromptPreset: Identifiable, Codable, Equatable {
         self.prompt = prompt
     }
 
+    /// True for the six bundled presets (matched by name). Built-ins can't be deleted.
+    var isBuiltIn: Bool {
+        AIPromptPreset.builtIn.contains(where: { $0.name == name })
+    }
+
+    /// Human-friendly one-line description of what each built-in mode does, shown in Settings.
+    /// Falls back to a generic line for custom modes.
+    var humanDescription: String {
+        AIPromptPreset.descriptions[name] ?? "Custom mode — your own instructions for the AI."
+    }
+
+    /// One-liners keyed by built-in preset name.
+    static let descriptions: [String: String] = [
+        "Clean Up": "Fixes grammar, punctuation and formatting. Keeps your words and language.",
+        "Translate to English": "Translates whatever you say into natural, fluent English.",
+        "Translate to Russian": "Translates whatever you say into natural, fluent Russian.",
+        "Developer Style": "Tightens text into clear developer prose for commits, comments and docs.",
+        "Warm & Friendly": "Rewrites your text in a warm, friendly, conversational tone.",
+        "Formal Business": "Rewrites your text in a polished, professional business tone.",
+    ]
+
     static let builtIn: [AIPromptPreset] = [
         AIPromptPreset(
             name: "Clean Up",
@@ -200,6 +221,24 @@ class SettingsManager: ObservableObject {
         HotkeyManager.hotkeyDisplayString(modifiers: aiToggleHotkeyModifiers, keyCode: aiToggleHotkeyKeyCode)
     }
 
+    // MARK: - Cycle AI Mode Hotkey
+
+    @Published var useCycleModeHotkey: Bool {
+        didSet { UserDefaults.standard.set(useCycleModeHotkey, forKey: "useCycleModeHotkey") }
+    }
+
+    @Published var cycleModeHotkeyKeyCode: UInt16 {
+        didSet { UserDefaults.standard.set(Int(cycleModeHotkeyKeyCode), forKey: "cycleModeHotkeyKeyCode") }
+    }
+
+    @Published var cycleModeHotkeyModifiers: NSEvent.ModifierFlags {
+        didSet { UserDefaults.standard.set(Int(cycleModeHotkeyModifiers.rawValue), forKey: "cycleModeHotkeyModifiers") }
+    }
+
+    var cycleModeHotkeyDisplayString: String {
+        HotkeyManager.hotkeyDisplayString(modifiers: cycleModeHotkeyModifiers, keyCode: cycleModeHotkeyKeyCode)
+    }
+
     // MARK: - Cancel Hotkey
 
     @Published var cancelHotkeyKeyCode: UInt16 {
@@ -303,6 +342,19 @@ class SettingsManager: ObservableObject {
             self.aiToggleHotkeyModifiers = [.control, .option]
         }
 
+        // Cycle AI Mode Hotkey: default to ⌃⌥M, disabled by default
+        self.useCycleModeHotkey = UserDefaults.standard.bool(forKey: "useCycleModeHotkey")
+
+        let storedCycleKeyCode = UserDefaults.standard.integer(forKey: "cycleModeHotkeyKeyCode")
+        self.cycleModeHotkeyKeyCode = storedCycleKeyCode > 0 ? UInt16(storedCycleKeyCode) : 46 // 46 = M
+
+        let storedCycleMods = UserDefaults.standard.integer(forKey: "cycleModeHotkeyModifiers")
+        if storedCycleMods > 0 {
+            self.cycleModeHotkeyModifiers = NSEvent.ModifierFlags(rawValue: UInt(storedCycleMods))
+        } else {
+            self.cycleModeHotkeyModifiers = [.control, .option]
+        }
+
         // Cancel hotkey: default to Escape (keyCode 53)
         let storedCancelKeyCode = UserDefaults.standard.integer(forKey: "cancelHotkeyKeyCode")
         self.cancelHotkeyKeyCode = storedCancelKeyCode > 0 ? UInt16(storedCancelKeyCode) : 53
@@ -377,6 +429,27 @@ class SettingsManager: ObservableObject {
                 UserDefaults.standard.set(engine.rawValue, forKey: "transcriptionEngine")
             }
         }
+    }
+
+    // MARK: - AI Mode Helpers
+
+    /// Advance to the next AI mode preset (wrapping around), update the active system prompt,
+    /// and return the newly-selected preset. No-op returning nil if there are no presets.
+    @discardableResult
+    func cycleToNextPreset() -> AIPromptPreset? {
+        guard !aiPresets.isEmpty else { return nil }
+        let nextIndex: Int
+        if let id = selectedPresetId,
+           let current = aiPresets.firstIndex(where: { $0.id == id }) {
+            nextIndex = (current + 1) % aiPresets.count
+        } else {
+            // No active preset (or a detached custom prompt) — start at the first.
+            nextIndex = 0
+        }
+        let next = aiPresets[nextIndex]
+        selectedPresetId = next.id
+        aiSystemPrompt = next.prompt
+        return next
     }
 
     // MARK: - Dictionary Helpers

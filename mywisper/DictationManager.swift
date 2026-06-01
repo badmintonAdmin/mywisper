@@ -58,6 +58,10 @@ class DictationManager: ObservableObject {
             self.settings.aiProcessingEnabled.toggle()
         }
 
+        hotkeyManager.onCycleMode = { [weak self] in
+            self?.cycleAIMode()
+        }
+
         hotkeyManager.onCancel = { [weak self] in
             self?.cancelOperation()
         }
@@ -149,6 +153,21 @@ class DictationManager: ObservableObject {
         }.store(in: &settingsCancellables)
 
         settings.$aiToggleHotkeyModifiers.sink { [weak self] _ in
+            self?.applyHotkeySettings()
+            self?.hotkeyManager.register()
+        }.store(in: &settingsCancellables)
+
+        settings.$useCycleModeHotkey.sink { [weak self] _ in
+            self?.applyHotkeySettings()
+            self?.hotkeyManager.register()
+        }.store(in: &settingsCancellables)
+
+        settings.$cycleModeHotkeyKeyCode.sink { [weak self] _ in
+            self?.applyHotkeySettings()
+            self?.hotkeyManager.register()
+        }.store(in: &settingsCancellables)
+
+        settings.$cycleModeHotkeyModifiers.sink { [weak self] _ in
             self?.applyHotkeySettings()
             self?.hotkeyManager.register()
         }.store(in: &settingsCancellables)
@@ -638,7 +657,20 @@ class DictationManager: ObservableObject {
         hotkeyManager.useAIToggleHotkey = settings.useAIToggleHotkey
         hotkeyManager.aiToggleHotkeyKeyCode = settings.aiToggleHotkeyKeyCode
         hotkeyManager.aiToggleHotkeyModifiers = settings.aiToggleHotkeyModifiers
+        hotkeyManager.useCycleModeHotkey = settings.useCycleModeHotkey
+        hotkeyManager.cycleModeHotkeyKeyCode = settings.cycleModeHotkeyKeyCode
+        hotkeyManager.cycleModeHotkeyModifiers = settings.cycleModeHotkeyModifiers
         hotkeyManager.cancelHotkeyKeyCode = settings.cancelHotkeyKeyCode
+    }
+
+    /// Advance to the next AI mode preset and surface the new mode name as a transient status.
+    /// Bound to the "Cycle AI mode" hotkey. The menu's "AI Mode: …" line updates via menuNeedsUpdate.
+    private func cycleAIMode() {
+        guard let preset = settings.cycleToNextPreset() else {
+            showTransientStatus("No AI modes available")
+            return
+        }
+        showTransientStatus("AI Mode: \(preset.name)")
     }
 
     private func checkPermissions() {
