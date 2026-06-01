@@ -488,8 +488,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "mywisper Settings"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-        window.setContentSize(NSSize(width: 640, height: 540))
-        window.minSize = NSSize(width: 560, height: 420)
+        window.setContentSize(NSSize(width: 820, height: 600))
+        window.minSize = NSSize(width: 720, height: 520)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

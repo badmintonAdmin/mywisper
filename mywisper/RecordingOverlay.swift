@@ -39,8 +39,9 @@ class RecordingPanel: NSPanel {
         self.backgroundColor = .clear
         self.hasShadow = false // We draw our own glow
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        self.isMovableByWindowBackground = false
-        self.isMovable = false
+        // Draggable: let the user move the pill anywhere and remember where they left it.
+        self.isMovableByWindowBackground = true
+        self.isMovable = true
         self.titlebarAppearsTransparent = true
         self.titleVisibility = .hidden
         self.ignoresMouseEvents = false // Allow stop button clicks
@@ -52,18 +53,51 @@ class RecordingPanel: NSPanel {
         hostingView.layer?.backgroundColor = .clear
         self.contentView = hostingView
 
-        centerOnScreen()
+        positionFromDefaultsOrCenter()
     }
 
-    private func centerOnScreen() {
-        guard let screen = NSScreen.main else { return }
+    /// UserDefaults keys for the persisted (user-dragged) panel origin.
+    private static let originXKey = "overlayOriginX"
+    private static let originYKey = "overlayOriginY"
+
+    /// The centered default origin (top-center of the main screen) used on first run.
+    private func defaultCenteredOrigin() -> NSPoint {
+        guard let screen = NSScreen.main else { return NSPoint(x: 0, y: 0) }
         let x = (screen.frame.width - 220) / 2
         let y = screen.frame.height - 90
-        self.setFrameOrigin(NSPoint(x: x, y: y))
+        return NSPoint(x: x, y: y)
+    }
+
+    /// Restore the user's last dragged position; fall back to the centered default if none saved.
+    private func positionFromDefaultsOrCenter() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.originXKey) != nil,
+           defaults.object(forKey: Self.originYKey) != nil {
+            let x = defaults.double(forKey: Self.originXKey)
+            let y = defaults.double(forKey: Self.originYKey)
+            self.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            self.setFrameOrigin(defaultCenteredOrigin())
+        }
+    }
+
+    /// Persist the current origin whenever the user finishes dragging the panel.
+    private func saveOrigin() {
+        let origin = self.frame.origin
+        UserDefaults.standard.set(Double(origin.x), forKey: Self.originXKey)
+        UserDefaults.standard.set(Double(origin.y), forKey: Self.originYKey)
+    }
+
+    // Persist the panel's position after the user finishes dragging it (mouse-up ends an
+    // isMovableByWindowBackground drag); next show() reuses it instead of re-centering.
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        saveOrigin()
     }
 
     func show() {
-        centerOnScreen()
+        // Reuse the user's last position (or the default) — do NOT force re-center every time.
+        positionFromDefaultsOrCenter()
         orderFrontRegardless()
     }
 

@@ -54,8 +54,7 @@ class DictationManager: ObservableObject {
         }
 
         hotkeyManager.onToggleAI = { [weak self] in
-            guard let self = self else { return }
-            self.settings.aiProcessingEnabled.toggle()
+            self?.toggleAIProcessing()
         }
 
         hotkeyManager.onCycleMode = { [weak self] in
@@ -548,6 +547,12 @@ class DictationManager: ObservableObject {
 
         currentTranscription = message
 
+        // The recording panel only attracts the eye when it's actually showing recording/
+        // transcribing state. For standalone notices (errors, "No speech detected") it is not
+        // visible here, so also surface the message in the always-on-top toast HUD — this is the
+        // only feedback the user sees when a mywisper window is focused.
+        StatusHUD.shared.show(message, systemImage: nil, duration: max(duration, 1.3))
+
         if recordingPanel == nil {
             recordingPanel = RecordingPanel()
             recordingPanel?.state.onStop = { [weak self] in
@@ -663,14 +668,28 @@ class DictationManager: ObservableObject {
         hotkeyManager.cancelHotkeyKeyCode = settings.cancelHotkeyKeyCode
     }
 
-    /// Advance to the next AI mode preset and surface the new mode name as a transient status.
+    /// Toggle AI post-processing on/off and surface the new state in the toast HUD so the user
+    /// gets feedback even when a mywisper window is focused. Bound to the "AI toggle" hotkey.
+    /// The menu's "AI Processing: On/Off" line updates via menuNeedsUpdate.
+    private func toggleAIProcessing() {
+        settings.aiProcessingEnabled.toggle()
+        if settings.aiProcessingEnabled {
+            StatusHUD.shared.show("AI Processing: On", systemImage: "brain")
+        } else {
+            // No dedicated "brain with slash" SF Symbol exists across our deployment target;
+            // pair the brain with a slash circle to read clearly as "off".
+            StatusHUD.shared.show("AI Processing: Off", systemImage: "slash.circle")
+        }
+    }
+
+    /// Advance to the next AI mode preset and surface the new mode name in the toast HUD.
     /// Bound to the "Cycle AI mode" hotkey. The menu's "AI Mode: …" line updates via menuNeedsUpdate.
     private func cycleAIMode() {
         guard let preset = settings.cycleToNextPreset() else {
-            showTransientStatus("No AI modes available")
+            StatusHUD.shared.show("No AI modes available", systemImage: "exclamationmark.triangle")
             return
         }
-        showTransientStatus("AI Mode: \(preset.name)")
+        StatusHUD.shared.show("AI Mode: \(preset.name)", systemImage: "text.badge.star")
     }
 
     private func checkPermissions() {

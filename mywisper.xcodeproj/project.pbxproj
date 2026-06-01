@@ -23,6 +23,7 @@
 		A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD22F62817D0064176F /* HotkeyManager.swift */; };
 		A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD32F62817D0064176F /* TextPaster.swift */; };
 		A8CF8CDA2F62817D0064176F /* RecordingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */; };
+		FA571001000000000000AAAA /* StatusHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA571002000000000000AAAA /* StatusHUD.swift */; };
 		A8CF8CDB2F62817D0064176F /* DictationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD52F62817D0064176F /* DictationManager.swift */; };
 		A8CF8CDC2F62817D0064176F /* ModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */; };
 		A8CF8CE32F62817D0064176F /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CE42F62817D0064176F /* SettingsManager.swift */; };
@@ -78,6 +79,7 @@
 		A8CF8CD22F62817D0064176F /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		A8CF8CD32F62817D0064176F /* TextPaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPaster.swift; sourceTree = "<group>"; };
 		A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlay.swift; sourceTree = "<group>"; };
+		FA571002000000000000AAAA /* StatusHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusHUD.swift; sourceTree = "<group>"; };
 		A8CF8CD52F62817D0064176F /* DictationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationManager.swift; sourceTree = "<group>"; };
 		A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloader.swift; sourceTree = "<group>"; };
 		A8CF8CE42F62817D0064176F /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				A8CF8CD22F62817D0064176F /* HotkeyManager.swift */,
 				A8CF8CD32F62817D0064176F /* TextPaster.swift */,
 				A8CF8CD42F62817D0064176F /* RecordingOverlay.swift */,
+				FA571002000000000000AAAA /* StatusHUD.swift */,
 				A8CF8CDD2F62817D0064176F /* ModelDownloader.swift */,
 				A8CF8CE42F62817D0064176F /* SettingsManager.swift */,
 				A8CF8CE62F62817D0064176F /* SettingsView.swift */,
@@ -349,6 +352,7 @@
 				A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */,
 				A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */,
 				A8CF8CDA2F62817D0064176F /* RecordingOverlay.swift in Sources */,
+				FA571001000000000000AAAA /* StatusHUD.swift in Sources */,
 				A8CF8CDB2F62817D0064176F /* DictationManager.swift in Sources */,
 				A8CF8CDC2F62817D0064176F /* ModelDownloader.swift in Sources */,
 				A8CF8CE32F62817D0064176F /* SettingsManager.swift in Sources */,

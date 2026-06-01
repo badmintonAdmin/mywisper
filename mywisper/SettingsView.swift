@@ -85,83 +85,66 @@ struct SettingsView: View {
     @ObservedObject var pendingStore = PendingRecordingsStore.shared
     @ObservedObject var launchAtLogin = LaunchAtLoginManager.shared
     @State private var availableModels: [(name: String, path: String)] = []
-    @State private var selectedTab: SettingsTab = .general
+    @State private var selectedTab: SettingsTab? = .general
     @State private var availableInputDevices: [AudioInputDevice] = []
 
-    enum SettingsTab: String, CaseIterable {
+    enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
         case ai = "AI Processing"
-        case hotkey = "Hotkey"
+        case hotkey = "Hotkeys"
+        case about = "About"
+
+        var id: String { rawValue }
 
         var icon: String {
             switch self {
-            case .general: return "gear"
+            case .general: return "gearshape"
             case .ai: return "brain"
             case .hotkey: return "keyboard"
+            case .about: return "info.circle"
             }
         }
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Sidebar
-            VStack(spacing: 2) {
-                ForEach(SettingsTab.allCases, id: \.self) { tab in
-                    sidebarButton(for: tab)
-                }
-                Spacer()
+        NavigationSplitView {
+            List(SettingsTab.allCases, selection: $selectedTab) { tab in
+                sidebarRow(for: tab)
+                    .tag(tab)
             }
-            .padding(10)
-            .frame(width: 160)
-            .background(Color(NSColor.windowBackgroundColor))
-
-            Divider()
-
-            // Content
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 220)
+        } detail: {
             Group {
-                switch selectedTab {
+                switch selectedTab ?? .general {
                 case .general: generalTab
                 case .ai: aiProcessingTab
                 case .hotkey: hotkeyTab
+                case .about: aboutTab
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 620, minHeight: 480)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(minWidth: 720, minHeight: 520)
         .onAppear {
             availableModels = settings.findAvailableModels()
             availableInputDevices = AudioInputDevices.available()
         }
     }
 
-    private func sidebarButton(for tab: SettingsTab) -> some View {
-        HStack(spacing: 8) {
-            if tab == .ai {
+    @ViewBuilder
+    private func sidebarRow(for tab: SettingsTab) -> some View {
+        if tab == .ai {
+            Label {
+                Text(tab.rawValue)
+            } icon: {
                 Image("openai")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 16, height: 16)
-                    .frame(width: 20)
-            } else {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13))
-                    .frame(width: 20)
             }
-            Text(tab.rawValue)
-                .font(.system(size: 13, weight: selectedTab == tab ? .semibold : .regular))
-            Spacer()
-        }
-        .foregroundColor(selectedTab == tab ? .white : .primary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(selectedTab == tab ? Color.accentColor : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.15)) { selectedTab = tab }
+        } else {
+            Label(tab.rawValue, systemImage: tab.icon)
         }
     }
 
@@ -1510,6 +1493,49 @@ struct SettingsView: View {
                                 .controlSize(.small)
                             }
                         }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - About Tab
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "Version \(version) (\(build))"
+    }
+
+    private var aboutTab: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                SectionCard(title: "mywisper", icon: "mic.fill", subtitle: appVersion) {
+                    Text("Local-first menu bar dictation. Record speech with a global hotkey, transcribe it on-device with Whisper (or Apple Speech / Cloud), optionally refine it with AI, and paste it into the focused field.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SectionCard(title: "Resources", icon: "link", subtitle: "Help & background") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            NotificationCenter.default.post(name: .showOnboardingRequested, object: nil)
+                        } label: {
+                            Label("Open Setup Guide", systemImage: "sparkles")
+                        }
+                        .controlSize(.small)
+
+                        Link(destination: URL(string: "https://github.com/ggerganov/whisper.cpp")!) {
+                            Label("whisper.cpp on GitHub", systemImage: "arrow.up.right.square")
+                        }
+                        .font(.system(size: 12))
+
+                        Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+                            Label("OpenAI API keys", systemImage: "arrow.up.right.square")
+                        }
+                        .font(.system(size: 12))
                     }
                 }
             }

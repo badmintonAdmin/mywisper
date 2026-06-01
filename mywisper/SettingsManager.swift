@@ -329,8 +329,10 @@ class SettingsManager: ObservableObject {
             self.customHotkeyModifiers = [.control, .option]
         }
 
-        // AI Toggle Hotkey: default to ⌃⌥A, disabled by default
-        self.useAIToggleHotkey = UserDefaults.standard.bool(forKey: "useAIToggleHotkey")
+        // AI Toggle Hotkey: default to ⌃⌥A, enabled by default (user-overridable in Settings)
+        self.useAIToggleHotkey = UserDefaults.standard.object(forKey: "useAIToggleHotkey") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "useAIToggleHotkey")
 
         let storedAIKeyCode = UserDefaults.standard.integer(forKey: "aiToggleHotkeyKeyCode")
         self.aiToggleHotkeyKeyCode = storedAIKeyCode > 0 ? UInt16(storedAIKeyCode) : 0 // 0 = A
@@ -342,8 +344,10 @@ class SettingsManager: ObservableObject {
             self.aiToggleHotkeyModifiers = [.control, .option]
         }
 
-        // Cycle AI Mode Hotkey: default to ⌃⌥M, disabled by default
-        self.useCycleModeHotkey = UserDefaults.standard.bool(forKey: "useCycleModeHotkey")
+        // Cycle AI Mode Hotkey: default to ⌃⌥M, enabled by default (user-overridable in Settings)
+        self.useCycleModeHotkey = UserDefaults.standard.object(forKey: "useCycleModeHotkey") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "useCycleModeHotkey")
 
         let storedCycleKeyCode = UserDefaults.standard.integer(forKey: "cycleModeHotkeyKeyCode")
         self.cycleModeHotkeyKeyCode = storedCycleKeyCode > 0 ? UInt16(storedCycleKeyCode) : 46 // 46 = M
