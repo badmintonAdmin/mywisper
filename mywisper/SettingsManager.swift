@@ -255,6 +255,17 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
 
+    /// Play a light sound cue when recording starts, so it's clear the hotkey fired.
+    @Published var playStartSound: Bool {
+        didSet { UserDefaults.standard.set(playStartSound, forKey: "playStartSound") }
+    }
+
+    /// Show a persistent Dock icon (regular app) so mywisper is always reachable even when the
+    /// menu-bar icon is hidden behind the notch. AppDelegate applies the activation policy.
+    @Published var showDockIcon: Bool {
+        didSet { UserDefaults.standard.set(showDockIcon, forKey: "showDockIcon") }
+    }
+
     // MARK: - Custom Dictionary
 
     @Published var customDictionaryEnabled: Bool {
@@ -365,6 +376,10 @@ class SettingsManager: ObservableObject {
 
         // Onboarding
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        // Default ON when never set.
+        self.playStartSound = UserDefaults.standard.object(forKey: "playStartSound") == nil
+            ? true : UserDefaults.standard.bool(forKey: "playStartSound")
+        self.showDockIcon = UserDefaults.standard.bool(forKey: "showDockIcon")
 
         // AI Processing
         self.aiProcessingEnabled = UserDefaults.standard.bool(forKey: "aiProcessingEnabled")

@@ -93,6 +93,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.openSettings()
         }
 
+        // Apply the Dock-icon preference now, and whenever it changes. A persistent Dock icon
+        // keeps mywisper reachable even when the menu-bar icon is hidden behind the notch.
+        applyActivationPolicy(SettingsManager.shared.showDockIcon)
+        SettingsManager.shared.$showDockIcon.sink { [weak self] show in
+            DispatchQueue.main.async { self?.applyActivationPolicy(show) }
+        }.store(in: &cancellables)
+
         // First launch: show the setup checklist.
         if !SettingsManager.shared.hasCompletedOnboarding {
             DispatchQueue.main.async { [weak self] in
@@ -102,6 +109,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var cancellables = Set<AnyCancellable>()
+
+    /// When the user re-launches mywisper from Finder/Spotlight/Dock — e.g. because the menu-bar
+    /// icon is hidden behind the notch when many apps are running — open Settings (or the
+    /// onboarding checklist on a fresh install) so there's always a reliable way back in.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if SettingsManager.shared.hasCompletedOnboarding {
+            openSettings()
+        } else {
+            openOnboarding()
+        }
+        return true
+    }
+
+    /// Show/hide the persistent Dock icon. `.regular` adds a Dock icon (and a standard app menu
+    /// when focused — handy for Quit); `.accessory` is the menu-bar-only default.
+    private func applyActivationPolicy(_ showDock: Bool) {
+        NSApp.setActivationPolicy(showDock ? .regular : .accessory)
+    }
 
     private func updateIcon() {
         let iconName: String

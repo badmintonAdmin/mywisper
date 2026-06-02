@@ -6,9 +6,9 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-> **Latest release:** [v1.0.0](https://github.com/badmintonAdmin/mywisper/releases/tag/v1.0.0) — 2026-06-01
-> - **Apple Silicon (M1/M2/M3/M4):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.0.0/mywisper-1.0.0-AppleSilicon.dmg) · [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
-> - **Intel:** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.0.0/mywisper-1.0.0-Intel.dmg) · [`installation/Intel/mywisper.dmg`](installation/Intel/mywisper.dmg)
+> **Latest release:** [v1.1.0](https://github.com/badmintonAdmin/mywisper/releases/tag/v1.1.0) — 2026-06-02
+> - **Apple Silicon (M1/M2/M3/M4):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.1.0/mywisper-1.1.0-AppleSilicon.dmg) · [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
+> - **Intel:** [v1.0.0 DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.0.0/mywisper-1.0.0-Intel.dmg) (1.1 Intel build not yet published)
 
 ## Features
 

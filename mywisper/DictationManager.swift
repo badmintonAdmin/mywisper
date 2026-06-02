@@ -289,6 +289,10 @@ class DictationManager: ObservableObject {
         isCancelled = false
         recordingStartTime = Date()
         hotkeyManager.isOperationActive = true
+
+        // Light audible cue so it's clear recording actually started.
+        playCue()
+
         showOverlay(status: "Recording...")
         recordingPanel?.state.isRecording = true
         recordingPanel?.state.isTranscribing = false
@@ -581,10 +585,19 @@ class DictationManager: ObservableObject {
     /// Paste the text and, if Accessibility wasn't granted (so we could only copy), surface a
     /// brief notice telling the user to press Cmd+V. Must be called on the main thread.
     private func pasteAndNotify(_ text: String) {
+        // Soft cue that the transcription finished and the text was delivered.
+        playCue()
         let result = textPaster.paste(text: text, previousApp: previousApp)
         if result == .copiedToClipboardOnly {
             showTransientStatus("Copied to clipboard — press ⌘V (grant Accessibility to auto-paste)", duration: 4.0)
         }
+    }
+
+    /// Play a soft, gentle sound cue (start of recording and completion). Gated by the
+    /// `playStartSound` setting. Uses the soft "Pop" system sound rather than the sharp "Tink".
+    private func playCue() {
+        guard settings.playStartSound else { return }
+        NSSound(named: NSSound.Name("Pop"))?.play()
     }
 
     /// Undo the most recent auto-paste: restore the prior clipboard and (when Accessibility is

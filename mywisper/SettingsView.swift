@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 import Carbon.HIToolbox
 
@@ -239,6 +240,30 @@ struct SettingsView: View {
                         }
                     }
                     .toggleStyle(.switch)
+
+                    Toggle(isOn: $settings.showDockIcon) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show icon in Dock")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Keep mywisper reachable from the Dock even when the menu-bar icon is hidden")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                }
+
+                SectionCard(title: "Sound", icon: "speaker.wave.2", subtitle: "Audible feedback") {
+                    Toggle(isOn: $settings.playStartSound) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Play a sound on start & finish")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("A soft cue when recording starts and when the text is ready")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
                 }
 
                 SectionCard(title: "Setup", icon: "checklist", subtitle: "Permissions & engine") {
@@ -255,9 +280,40 @@ struct SettingsView: View {
                         .controlSize(.small)
                     }
                 }
+
+                SectionCard(title: "Application", icon: "power", subtitle: "Restart or quit mywisper") {
+                    HStack {
+                        Text("Use these if the menu-bar icon is hidden.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button {
+                            Self.restartApp()
+                        } label: {
+                            Label("Restart", systemImage: "arrow.clockwise")
+                        }
+                        .controlSize(.small)
+                        Button(role: .destructive) {
+                            NSApp.terminate(nil)
+                        } label: {
+                            Label("Quit", systemImage: "power")
+                        }
+                        .controlSize(.small)
+                    }
+                }
             }
             .padding(16)
             .onAppear { launchAtLogin.refresh() }
+        }
+    }
+
+    /// Relaunch the app: spawn a fresh instance, then terminate the current one.
+    static func restartApp() {
+        let url = Bundle.main.bundleURL
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
         }
     }
 
