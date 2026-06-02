@@ -93,6 +93,7 @@ struct SettingsView: View {
     private let permissionTimer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     enum SettingsTab: String, CaseIterable, Identifiable {
+        case permissions = "Permissions"
         case general = "General"
         case ai = "AI Processing"
         case hotkey = "Hotkeys"
@@ -102,6 +103,7 @@ struct SettingsView: View {
 
         var icon: String {
             switch self {
+            case .permissions: return "exclamationmark.shield.fill"
             case .general: return "gearshape"
             case .ai: return "brain"
             case .hotkey: return "keyboard"
@@ -110,76 +112,118 @@ struct SettingsView: View {
         }
     }
 
+    /// Sidebar items. The attention-grabbing Permissions row only appears while Accessibility
+    /// is missing, so it can't be ignored; it disappears once the permission is granted.
+    private var visibleTabs: [SettingsTab] {
+        accessibilityGranted
+            ? [.general, .ai, .hotkey, .about]
+            : [.permissions, .general, .ai, .hotkey, .about]
+    }
+
     var body: some View {
         NavigationSplitView {
-            List(SettingsTab.allCases, selection: $selectedTab) { tab in
+            List(visibleTabs, selection: $selectedTab) { tab in
                 sidebarRow(for: tab)
                     .tag(tab)
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 220)
         } detail: {
-            VStack(spacing: 0) {
-                if !accessibilityGranted {
-                    accessibilityBanner
+            Group {
+                switch selectedTab ?? .general {
+                case .permissions: permissionsTab
+                case .general: generalTab
+                case .ai: aiProcessingTab
+                case .hotkey: hotkeyTab
+                case .about: aboutTab
                 }
-                Group {
-                    switch selectedTab ?? .general {
-                    case .general: generalTab
-                    case .ai: aiProcessingTab
-                    case .hotkey: hotkeyTab
-                    case .about: aboutTab
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 720, minHeight: 520)
         .onAppear {
             availableModels = settings.findAvailableModels()
             availableInputDevices = AudioInputDevices.available()
             accessibilityGranted = TextPaster.checkAccessibilityPermission()
+            // Land on the Permissions page first if the permission is missing.
+            if !accessibilityGranted { selectedTab = .permissions }
         }
         .onReceive(permissionTimer) { _ in
-            accessibilityGranted = TextPaster.checkAccessibilityPermission()
+            let granted = TextPaster.checkAccessibilityPermission()
+            if granted != accessibilityGranted {
+                accessibilityGranted = granted
+                // Once granted, leave the Permissions page; if it just dropped, jump to it.
+                if granted, selectedTab == .permissions { selectedTab = .general }
+                if !granted { selectedTab = .permissions }
+            }
         }
     }
 
-    /// Prominent banner shown at the top of Settings whenever Accessibility is not granted —
-    /// so the fix is obvious right when the user opens Settings (the app opens Settings on
-    /// relaunch), instead of being buried at the bottom of the Hotkeys tab.
-    private var accessibilityBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.shield.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Accessibility permission needed")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Global hotkeys and auto-paste won't work until you enable mywisper under System Settings → Privacy & Security → Accessibility. This resets after each reinstall.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Button {
-                TextPaster.requestAccessibilityPermission()
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
+    /// Dedicated Permissions page, reachable from the attention-grabbing orange sidebar row that
+    /// appears whenever Accessibility is missing (and auto-selected on open). Makes the required
+    /// action impossible to miss instead of being buried at the bottom of the Hotkeys tab.
+    private var permissionsTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                SectionCard(title: "Accessibility", icon: "exclamationmark.shield.fill",
+                            subtitle: "Required for global hotkeys and auto-paste") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 10) {
+                            Image(systemName: accessibilityGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(accessibilityGranted ? .green : .orange)
+                                .font(.system(size: 20))
+                            Text(accessibilityGranted ? "Granted — you're all set." : "Not granted")
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                        }
+
+                        if !accessibilityGranted {
+                            Text("Without this, the global hotkey won't start recording and the result can't be auto-pasted. macOS resets this permission every time the app is reinstalled or updated.")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("Click “Grant…” below", systemImage: "1.circle.fill")
+                                Label("In the list, enable mywisper", systemImage: "2.circle.fill")
+                                Label("Come back — this updates automatically", systemImage: "3.circle.fill")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+
+                            Button {
+                                TextPaster.requestAccessibilityPermission()
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            } label: {
+                                Label("Grant Accessibility…", systemImage: "lock.open")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .controlSize(.large)
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
                 }
-            } label: {
-                Text("Grant…").fontWeight(.medium)
+
+                SectionCard(title: "Microphone", icon: "mic", subtitle: "Required to record audio") {
+                    Text("Requested automatically the first time you record. Manage it under System Settings → Privacy & Security → Microphone.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .controlSize(.large)
+            .padding(16)
         }
-        .padding(14)
-        .background(Color.orange.opacity(0.12))
-        .overlay(Rectangle().fill(Color.orange.opacity(0.35)).frame(height: 1), alignment: .bottom)
     }
 
     @ViewBuilder
     private func sidebarRow(for tab: SettingsTab) -> some View {
-        if tab == .ai {
+        if tab == .permissions {
+            Label(tab.rawValue, systemImage: tab.icon)
+                .foregroundColor(.orange)
+                .fontWeight(.semibold)
+        } else if tab == .ai {
             Label {
                 Text(tab.rawValue)
             } icon: {
