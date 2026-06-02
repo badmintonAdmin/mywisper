@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 import Carbon.HIToolbox
 
@@ -88,6 +89,8 @@ struct SettingsView: View {
     @State private var availableModels: [(name: String, path: String)] = []
     @State private var selectedTab: SettingsTab? = .general
     @State private var availableInputDevices: [AudioInputDevice] = []
+    @State private var accessibilityGranted = TextPaster.checkAccessibilityPermission()
+    private let permissionTimer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
@@ -116,21 +119,62 @@ struct SettingsView: View {
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 190, ideal: 200, max: 220)
         } detail: {
-            Group {
-                switch selectedTab ?? .general {
-                case .general: generalTab
-                case .ai: aiProcessingTab
-                case .hotkey: hotkeyTab
-                case .about: aboutTab
+            VStack(spacing: 0) {
+                if !accessibilityGranted {
+                    accessibilityBanner
                 }
+                Group {
+                    switch selectedTab ?? .general {
+                    case .general: generalTab
+                    case .ai: aiProcessingTab
+                    case .hotkey: hotkeyTab
+                    case .about: aboutTab
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 720, minHeight: 520)
         .onAppear {
             availableModels = settings.findAvailableModels()
             availableInputDevices = AudioInputDevices.available()
+            accessibilityGranted = TextPaster.checkAccessibilityPermission()
         }
+        .onReceive(permissionTimer) { _ in
+            accessibilityGranted = TextPaster.checkAccessibilityPermission()
+        }
+    }
+
+    /// Prominent banner shown at the top of Settings whenever Accessibility is not granted —
+    /// so the fix is obvious right when the user opens Settings (the app opens Settings on
+    /// relaunch), instead of being buried at the bottom of the Hotkeys tab.
+    private var accessibilityBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.system(size: 22))
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Accessibility permission needed")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Global hotkeys and auto-paste won't work until you enable mywisper under System Settings → Privacy & Security → Accessibility. This resets after each reinstall.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button {
+                TextPaster.requestAccessibilityPermission()
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Text("Grant…").fontWeight(.medium)
+            }
+            .controlSize(.large)
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.12))
+        .overlay(Rectangle().fill(Color.orange.opacity(0.35)).frame(height: 1), alignment: .bottom)
     }
 
     @ViewBuilder
@@ -167,11 +211,6 @@ struct SettingsView: View {
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
 
-                    if settings.engine == .whisper {
-                        Divider().padding(.vertical, 4)
-                        whisperModelSection
-                    }
-
                     if settings.engine == .cloud {
                         Divider().padding(.vertical, 4)
                         HStack(spacing: 6) {
@@ -185,6 +224,10 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                }
+
+                if settings.engine == .whisper {
+                    whisperModelSection
                 }
 
                 SectionCard(title: "Language", icon: "globe", subtitle: "Speech recognition language ('Auto' detects automatically)") {
@@ -264,6 +307,31 @@ struct SettingsView: View {
                         }
                     }
                     .toggleStyle(.switch)
+
+                    if settings.playStartSound {
+                        HStack(spacing: 8) {
+                            Text("Sound")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Picker("", selection: $settings.selectedSoundName) {
+                                ForEach(SettingsManager.availableSounds, id: \.self) { name in
+                                    Text(name).tag(name)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 160)
+                            .onChange(of: settings.selectedSoundName) { newValue in
+                                NSSound(named: NSSound.Name(newValue))?.play()  // preview on pick
+                            }
+                            Button {
+                                NSSound(named: NSSound.Name(settings.selectedSoundName))?.play()
+                            } label: {
+                                Label("Play", systemImage: "play.circle")
+                            }
+                            .controlSize(.small)
+                            Spacer()
+                        }
+                    }
                 }
 
                 SectionCard(title: "Setup", icon: "checklist", subtitle: "Permissions & engine") {
@@ -423,12 +491,56 @@ struct SettingsView: View {
 
     @ObservedObject private var modelDownloader = ModelDownloader.shared
 
-    private var whisperModelSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Model")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.secondary)
+    @State private var isModelExpanded = false
 
+    private var currentModelName: String {
+        settings.whisperModelPath.isEmpty ? "not set" : URL(fileURLWithPath: settings.whisperModelPath).lastPathComponent
+    }
+
+    private var whisperModelSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Prominent, always-visible header so the model is easy to find and obviously tappable.
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { isModelExpanded.toggle() }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 18))
+                        .foregroundColor(.accentColor)
+                        .frame(width: 26)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Whisper Model")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.primary)
+                        if settings.whisperModelPath.isEmpty {
+                            Text("No model selected — choose one to use local Whisper")
+                                .font(.system(size: 11))
+                                .foregroundColor(.orange)
+                        } else {
+                            Text(currentModelName)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    Spacer()
+                    Text(isModelExpanded ? "Hide" : (settings.whisperModelPath.isEmpty ? "Choose" : "Change"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.accentColor)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .rotationEffect(.degrees(isModelExpanded ? 90 : 0))
+                }
+                .padding(12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isModelExpanded {
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
             VStack(spacing: 4) {
                 ForEach(WhisperModel.all) { model in
                     whisperModelRow(model)
@@ -489,13 +601,29 @@ struct SettingsView: View {
                 .controlSize(.small)
             }
 
-            if !settings.whisperModelPath.isEmpty {
-                let fileName = URL(fileURLWithPath: settings.whisperModelPath).lastPathComponent
-                StatusPill(text: "Selected: \(fileName)", icon: "checkmark.circle.fill", isGood: true)
-            }
-
             Divider().padding(.vertical, 2)
             whisperBinarySection
+                }
+                .padding(12)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.accentColor.opacity(settings.whisperModelPath.isEmpty ? 0.10 : 0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.accentColor.opacity(settings.whisperModelPath.isEmpty ? 0.45 : 0.22),
+                        lineWidth: settings.whisperModelPath.isEmpty ? 1.5 : 1)
+        )
+        .onAppear {
+            // Expanded by default until a model is chosen (e.g. first launch); collapsed once set.
+            isModelExpanded = settings.whisperModelPath.isEmpty
+        }
+        .onChange(of: settings.whisperModelPath) { newValue in
+            if !newValue.isEmpty {
+                withAnimation(.easeInOut(duration: 0.2)) { isModelExpanded = false }
+            }
         }
     }
 

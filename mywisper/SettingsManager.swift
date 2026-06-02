@@ -260,6 +260,14 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(playStartSound, forKey: "playStartSound") }
     }
 
+    /// Small library of built-in macOS system sounds the user can pick + preview.
+    static let availableSounds = ["Pop", "Tink", "Glass", "Purr", "Bottle", "Hero", "Ping", "Submarine"]
+
+    /// Which sound to play for the start/finish cue.
+    @Published var selectedSoundName: String {
+        didSet { UserDefaults.standard.set(selectedSoundName, forKey: "selectedSoundName") }
+    }
+
     /// Show a persistent Dock icon (regular app) so mywisper is always reachable even when the
     /// menu-bar icon is hidden behind the notch. AppDelegate applies the activation policy.
     @Published var showDockIcon: Bool {
@@ -379,6 +387,7 @@ class SettingsManager: ObservableObject {
         // Default ON when never set.
         self.playStartSound = UserDefaults.standard.object(forKey: "playStartSound") == nil
             ? true : UserDefaults.standard.bool(forKey: "playStartSound")
+        self.selectedSoundName = UserDefaults.standard.string(forKey: "selectedSoundName") ?? "Pop"
         self.showDockIcon = UserDefaults.standard.bool(forKey: "showDockIcon")
 
         // AI Processing

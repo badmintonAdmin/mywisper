@@ -593,11 +593,11 @@ class DictationManager: ObservableObject {
         }
     }
 
-    /// Play a soft, gentle sound cue (start of recording and completion). Gated by the
-    /// `playStartSound` setting. Uses the soft "Pop" system sound rather than the sharp "Tink".
+    /// Play the chosen sound cue (start of recording and completion). Gated by the
+    /// `playStartSound` setting; the sound is `settings.selectedSoundName`.
     private func playCue() {
         guard settings.playStartSound else { return }
-        NSSound(named: NSSound.Name("Pop"))?.play()
+        NSSound(named: NSSound.Name(settings.selectedSoundName))?.play()
     }
 
     /// Undo the most recent auto-paste: restore the prior clipboard and (when Accessibility is
