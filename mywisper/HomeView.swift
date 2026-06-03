@@ -35,8 +35,8 @@ struct HomeView: View {
                 recordsList
             }
         }
-        .frame(minWidth: 520, minHeight: 440)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(minWidth: 500, minHeight: 440)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 
     // MARK: - Header
@@ -284,6 +284,15 @@ struct TranscriptionRow: View {
 
             // Metadata row
             HStack(spacing: 6) {
+                if record.isFile {
+                    MetadataBadge(
+                        text: record.sourceName ?? "File",
+                        icon: "doc.text",
+                        tint: .blue
+                    )
+                    .help(record.sourceName ?? "Transcribed from file")
+                }
+
                 MetadataBadge(
                     text: Self.relativeFormatter.localizedString(for: record.date, relativeTo: Date()),
                     icon: "clock"

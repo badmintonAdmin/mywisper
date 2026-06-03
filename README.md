@@ -6,9 +6,9 @@ A lightweight macOS menu bar dictation app. Record speech with a global hotkey, 
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-> **Latest release:** [v1.2.0](https://github.com/badmintonAdmin/mywisper/releases/tag/v1.2.0) — 2026-06-03
-> - **Apple Silicon (M1/M2/M3/M4):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.2.0/mywisper-1.2.0-AppleSilicon.dmg) · [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
-> - **Intel (x86_64):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.2.0/mywisper-1.2.0-Intel.dmg) · [`installation/Intel/mywisper.dmg`](installation/Intel/mywisper.dmg) — ⚠️ _experimental, cross-built, not tested on Intel hardware; best-effort support_
+> **Latest release:** [v1.3.0](https://github.com/badmintonAdmin/mywisper/releases/tag/v1.3.0) — 2026-06-03
+> - **Apple Silicon (M1/M2/M3/M4):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.3.0/mywisper-1.3.0-AppleSilicon.dmg) · [`installation/Silicon/mywisper.dmg`](installation/Silicon/mywisper.dmg)
+> - **Intel (x86_64):** [download DMG](https://github.com/badmintonAdmin/mywisper/releases/download/v1.3.0/mywisper-1.3.0-Intel.dmg) · [`installation/Intel/mywisper.dmg`](installation/Intel/mywisper.dmg) — ⚠️ _experimental, cross-built, not tested on Intel hardware; best-effort support_
 
 ## Features
 

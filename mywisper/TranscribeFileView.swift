@@ -55,8 +55,8 @@ struct TranscribeFileView: View {
                 .padding(20)
             }
         }
-        .frame(minWidth: 600, minHeight: 480)
-        .background(Color(NSColor.windowBackgroundColor))
+        .frame(minWidth: 540, minHeight: 460)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 
     // MARK: - Header

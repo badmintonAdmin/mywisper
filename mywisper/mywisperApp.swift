@@ -74,7 +74,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.openTranscribeFile()
+            self?.openHomeTranscribe()
         }
 
         // Re-open the onboarding checklist (from Settings) or open Settings (from onboarding).
@@ -115,7 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// onboarding checklist on a fresh install) so there's always a reliable way back in.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if SettingsManager.shared.hasCompletedOnboarding {
-            openSettings()
+            openHome()
         } else {
             openOnboarding()
         }
@@ -151,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.isEnabled = false
             menu.addItem(statusItem)
 
-            let showItem = NSMenuItem(title: "Show Transcription Window…", action: #selector(openTranscribeFile), keyEquivalent: "")
+            let showItem = NSMenuItem(title: "Show Transcription Window…", action: #selector(openHomeTranscribe), keyEquivalent: "")
             showItem.target = self
             menu.addItem(showItem)
 
@@ -324,15 +324,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        // Open the main window (Record)
+        let openItem = NSMenuItem(title: "Open My Whisper", action: #selector(openHome), keyEquivalent: "o")
+        openItem.target = self
+        menu.addItem(openItem)
+
         // Transcribe File
-        let transcribeFileItem = NSMenuItem(title: "Transcribe File...", action: #selector(openTranscribeFile), keyEquivalent: "t")
+        let transcribeFileItem = NSMenuItem(title: "Transcribe File...", action: #selector(openHomeTranscribe), keyEquivalent: "t")
         transcribeFileItem.target = self
         menu.addItem(transcribeFileItem)
 
         // History
         let historyCount = TranscriptionHistory.shared.records.count
         let historyTitle = historyCount > 0 ? "History (\(historyCount))" : "History"
-        let historyItem = NSMenuItem(title: historyTitle, action: #selector(openHome), keyEquivalent: "h")
+        let historyItem = NSMenuItem(title: historyTitle, action: #selector(openHomeHistory), keyEquivalent: "h")
         historyItem.target = self
         menu.addItem(historyItem)
 
@@ -407,23 +412,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func openHome() {
+    @objc private func openHome() { showMainWindow(.record) }
+    @objc private func openHomeTranscribe() { showMainWindow(.transcribeFile) }
+    @objc private func openHomeHistory() { showMainWindow(.history) }
+
+    /// Open (or focus) the main window on a given tab. This is what dock-reopen and the
+    /// menu's Open/Transcribe/History items go through.
+    private func showMainWindow(_ tab: MainTab) {
+        MainWindowNav.shared.selectedTab = tab
         if let window = homeWindow {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            // Don't let the History search field keep focus when re-showing.
+            DispatchQueue.main.async { window.makeFirstResponder(nil) }
             return
         }
 
-        let homeView = HomeView()
-        let hostingController = NSHostingController(rootView: homeView)
+        let view = MainWindowView(dictation: dictationManager)
+        let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "My Whisper"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-        window.setContentSize(NSSize(width: 560, height: 520))
-        window.minSize = NSSize(width: 420, height: 300)
+        window.setContentSize(NSSize(width: 1240, height: 800))
+        // Hard floor sized to the layout so nothing ever crams/clips when resizing.
+        window.contentMinSize = NSSize(width: 1160, height: 740)
+        // Don't auto-focus the first text field (History search) — otherwise the cursor
+        // sits there on open and dictated text lands in the search box.
+        window.initialFirstResponder = nil
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { window.makeFirstResponder(nil) }
 
         window.isReleasedWhenClosed = false
         NotificationCenter.default.addObserver(

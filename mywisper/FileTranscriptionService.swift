@@ -66,6 +66,8 @@ final class FileTranscriptionService: ObservableObject {
     private var currentTempURL: URL?
     private var currentSourceName: String?
     private var startedAt: Date?
+    private var currentLanguage: String = ""
+    private var currentAudioDuration: TimeInterval = 0
     private var elapsedTimer: Timer?
 
     private init() {}
@@ -110,6 +112,8 @@ final class FileTranscriptionService: ObservableObject {
         // Kick off the background pipeline
         let sourceName = sourceURL.lastPathComponent
         currentSourceName = sourceName
+        currentLanguage = language
+        currentAudioDuration = duration
         startedAt = Date()
         state = .preparing(sourceName: sourceName)
         menuBarStatus = "📄 \(sourceName) — preparing…"
@@ -220,6 +224,21 @@ final class FileTranscriptionService: ObservableObject {
             let total = startedAt.map { Date().timeIntervalSince($0) } ?? 0
             state = .done(text: text, sourceURL: sourceURL, sourceName: sourceName, totalSeconds: total)
             menuBarStatus = "📄 \(sourceName) — done"
+
+            // Save to history with a "file" source tag (uses audio duration, not processing time).
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                let record = TranscriptionRecord(
+                    text: trimmed,
+                    engine: "whisper",
+                    language: currentLanguage,
+                    durationSeconds: currentAudioDuration,
+                    source: "file",
+                    sourceName: sourceName
+                )
+                DispatchQueue.main.async { TranscriptionHistory.shared.add(record) }
+            }
+
             currentSourceName = nil
             startedAt = nil
 

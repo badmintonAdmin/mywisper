@@ -17,8 +17,13 @@ struct TranscriptionRecord: Identifiable, Codable {
     let durationSeconds: Double
     let aiProcessed: Bool
     let aiModel: String?
+    /// Origin of the transcription. "file" for Transcribe-File results; nil/"mic" for live dictation.
+    /// Optional so older saved records (without this key) still decode.
+    let source: String?
+    /// For file transcriptions, the source file name (e.g. "podcast.mp3").
+    let sourceName: String?
 
-    init(text: String, rawText: String? = nil, engine: String, language: String, durationSeconds: Double, aiProcessed: Bool = false, aiModel: String? = nil) {
+    init(text: String, rawText: String? = nil, engine: String, language: String, durationSeconds: Double, aiProcessed: Bool = false, aiModel: String? = nil, source: String? = nil, sourceName: String? = nil) {
         self.id = UUID()
         self.text = text
         self.rawText = rawText
@@ -28,7 +33,12 @@ struct TranscriptionRecord: Identifiable, Codable {
         self.durationSeconds = durationSeconds
         self.aiProcessed = aiProcessed
         self.aiModel = aiModel
+        self.source = source
+        self.sourceName = sourceName
     }
+
+    /// True when this came from the Transcribe-File flow.
+    var isFile: Bool { source == "file" }
 }
 
 class TranscriptionHistory: ObservableObject {

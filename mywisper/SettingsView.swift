@@ -1059,8 +1059,9 @@ struct SettingsView: View {
                         .labelsHidden()
 
                         HStack(spacing: 12) {
-                            modelHint(name: "gpt-4o-mini", desc: "Fast & cheap")
-                            modelHint(name: "gpt-4o", desc: "Most capable")
+                            modelHint(name: "gpt-4o-mini", desc: "Fast & cheap (default)")
+                            modelHint(name: "gpt-5.4-mini", desc: "Fast, GPT-5 gen")
+                            modelHint(name: "gpt-5.5", desc: "Most capable")
                         }
                     }
 

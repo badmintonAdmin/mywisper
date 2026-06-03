@@ -309,11 +309,18 @@ class SettingsManager: ObservableObject {
         }
     }
 
+    /// Selectable OpenAI models for AI post-processing, cheap → most capable.
+    /// gpt-4o-mini is the default (plenty for cleanup); the GPT-5 family is available for
+    /// users who want higher quality.
     static let availableModels = [
-        "gpt-4o",
         "gpt-4o-mini",
+        "gpt-4o",
         "gpt-4-turbo",
-        "gpt-3.5-turbo",
+        "gpt-5-mini",
+        "gpt-5",
+        "gpt-5.4-mini",
+        "gpt-5.5",
+        "gpt-5.5-pro",
     ]
 
     var customHotkeyDisplayString: String {
@@ -334,7 +341,7 @@ class SettingsManager: ObservableObject {
             ? true
             : UserDefaults.standard.bool(forKey: "useDoubleTapFn")
 
-        // Custom hotkey: default to ⌃⌥Space, enabled by default
+        // Custom hotkey: default to ⌥Space, enabled by default
         self.useCustomHotkey = UserDefaults.standard.object(forKey: "useCustomHotkey") == nil
             ? true
             : UserDefaults.standard.bool(forKey: "useCustomHotkey")
@@ -346,7 +353,7 @@ class SettingsManager: ObservableObject {
         if storedMods > 0 {
             self.customHotkeyModifiers = NSEvent.ModifierFlags(rawValue: UInt(storedMods))
         } else {
-            self.customHotkeyModifiers = [.control, .option]
+            self.customHotkeyModifiers = [.option]
         }
 
         // AI Toggle Hotkey: default to ⌃⌥A, enabled by default (user-overridable in Settings)
@@ -457,6 +464,16 @@ class SettingsManager: ObservableObject {
                 engine = .whisper
                 UserDefaults.standard.set(engine.rawValue, forKey: "transcriptionEngine")
             }
+        }
+
+        // One-time migration: move anyone still on the previous default record hotkey (⌃⌥Space)
+        // to the new default (⌥Space). Users who picked their own hotkey are left untouched.
+        if !UserDefaults.standard.bool(forKey: "didMigrateHotkeyOptSpace") {
+            let oldDefault = NSEvent.ModifierFlags([.control, .option]).rawValue
+            if customHotkeyKeyCode == 49 && customHotkeyModifiers.rawValue == oldDefault {
+                customHotkeyModifiers = [.option]   // didSet persists it
+            }
+            UserDefaults.standard.set(true, forKey: "didMigrateHotkeyOptSpace")
         }
     }
 
