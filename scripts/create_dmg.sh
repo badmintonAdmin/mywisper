@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 APP_NAME="mywisper"
 DMG_NAME="mywisper.dmg"
-DMG_OUTPUT="$PROJECT_DIR/installation/Silicon/$DMG_NAME"
 VOLUME_NAME="mywisper"
 STAGING_DIR="$PROJECT_DIR/build/dmg_staging"
 # Full Xcode is required (Metal compilation + xcodebuild). Override with DEVELOPER_DIR.
@@ -14,6 +13,14 @@ XCODE_PATH="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ARCH="${ARCH:-arm64}"            # target arch for both the app and whisper.cpp
 CODESIGN_ID="${CODESIGN_ID:--}"  # "-" = ad-hoc; or a Developer ID for distribution
 BG_DIR="$PROJECT_DIR/build/dmg_background"
+
+# Output goes to a per-arch folder: arm64 → installation/Silicon, x86_64 → installation/Intel.
+if [ "$ARCH" = "x86_64" ]; then
+    OUT_SUBDIR="Intel"
+else
+    OUT_SUBDIR="Silicon"
+fi
+DMG_OUTPUT="$PROJECT_DIR/installation/$OUT_SUBDIR/$DMG_NAME"
 
 echo "=== Building mywisper DMG ($ARCH) ==="
 
@@ -39,8 +46,8 @@ echo "  Built: $APP_PATH"
 # Build whisper.cpp natively if needed, then bundle whisper-cli + ALL its dylibs into the
 # app so the binary is fully self-contained (no dependency on ~/Downloads/whisper.cpp).
 echo "  Ensuring native whisper.cpp build..."
-WHISPER_BUILD="$(DEVELOPER_DIR="$XCODE_PATH" bash "$SCRIPT_DIR/build_whisper.sh" | tail -1)"
-bash "$SCRIPT_DIR/bundle_whisper.sh" "$APP_PATH/Contents/Resources" "$WHISPER_BUILD" "$CODESIGN_ID"
+WHISPER_BUILD="$(DEVELOPER_DIR="$XCODE_PATH" ARCH="$ARCH" bash "$SCRIPT_DIR/build_whisper.sh" | tail -1)"
+bash "$SCRIPT_DIR/bundle_whisper.sh" "$APP_PATH/Contents/Resources" "$WHISPER_BUILD" "$CODESIGN_ID" "$ARCH"
 
 # Re-sign the whole app: we modified Resources after Xcode signed it.
 echo "  Re-signing app bundle..."
