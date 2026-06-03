@@ -269,6 +269,12 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(selectedSoundName, forKey: "selectedSoundName") }
     }
 
+    /// Play a fixed tap sound when AI processing is toggled or the AI mode is cycled via hotkey.
+    /// On/off only — the sound itself is not configurable.
+    @Published var aiActionSoundEnabled: Bool {
+        didSet { UserDefaults.standard.set(aiActionSoundEnabled, forKey: "aiActionSoundEnabled") }
+    }
+
     /// Show a persistent Dock icon (regular app) so mywisper is always reachable even when the
     /// menu-bar icon is hidden behind the notch. AppDelegate applies the activation policy.
     @Published var showDockIcon: Bool {
@@ -396,6 +402,9 @@ class SettingsManager: ObservableObject {
         self.playStartSound = UserDefaults.standard.object(forKey: "playStartSound") == nil
             ? true : UserDefaults.standard.bool(forKey: "playStartSound")
         self.selectedSoundName = UserDefaults.standard.string(forKey: "selectedSoundName") ?? "Pop"
+        // Default ON when never set.
+        self.aiActionSoundEnabled = UserDefaults.standard.object(forKey: "aiActionSoundEnabled") == nil
+            ? true : UserDefaults.standard.bool(forKey: "aiActionSoundEnabled")
         self.showDockIcon = UserDefaults.standard.bool(forKey: "showDockIcon")
 
         // AI Processing

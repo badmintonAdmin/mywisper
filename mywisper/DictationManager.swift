@@ -699,6 +699,7 @@ class DictationManager: ObservableObject {
     /// The menu's "AI Processing: On/Off" line updates via menuNeedsUpdate.
     private func toggleAIProcessing() {
         settings.aiProcessingEnabled.toggle()
+        playAIActionCue()
         if settings.aiProcessingEnabled {
             StatusHUD.shared.show("AI Processing: On", systemImage: "brain")
         } else {
@@ -715,7 +716,15 @@ class DictationManager: ObservableObject {
             StatusHUD.shared.show("No AI modes available", systemImage: "exclamationmark.triangle")
             return
         }
+        playAIActionCue()
         StatusHUD.shared.show("AI Mode: \(preset.name)", systemImage: "text.badge.star")
+    }
+
+    /// Fixed tap cue for AI hotkey actions (toggle / cycle mode). Gated only by
+    /// `aiActionSoundEnabled`; the sound itself isn't configurable.
+    private func playAIActionCue() {
+        guard settings.aiActionSoundEnabled else { return }
+        SoundLibrary.playActionCue()
     }
 
     private func checkPermissions() {

@@ -407,6 +407,19 @@ struct SettingsView: View {
                             .controlSize(.small)
                         }
                     }
+
+                    Divider()
+
+                    Toggle(isOn: $settings.aiActionSoundEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sound on AI hotkey actions")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("A tap when you toggle AI processing or switch AI modes with the hotkey")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
                 }
 
                 SectionCard(title: "Setup", icon: "checklist", subtitle: "Permissions & engine") {

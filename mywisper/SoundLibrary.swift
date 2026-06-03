@@ -53,6 +53,16 @@ enum SoundLibrary {
         sound.play()
     }
 
+    /// Fixed UI cue for AI hotkey actions (toggle / cycle mode): always the bundled "Tap" sound,
+    /// not user-selectable. Falls back to the macOS "Tink" sound if the file is missing.
+    static func playActionCue() {
+        if sound(named: "Tap") != nil {
+            play(named: "Tap")
+        } else {
+            NSSound(named: NSSound.Name("Tink"))?.play()
+        }
+    }
+
     /// Play the dedicated error sound (`Resources/Sounds/error.mp3`). Falls back to the
     /// macOS "Basso" system sound if the file is missing.
     static func playError() {
