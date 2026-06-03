@@ -185,7 +185,7 @@ struct SettingsView: View {
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Click “Grant…” below", systemImage: "1.circle.fill")
-                                Label("In the list, enable mywisper", systemImage: "2.circle.fill")
+                                Label("In the list, enable My Whisper", systemImage: "2.circle.fill")
                                 Label("Come back — this updates automatically", systemImage: "3.circle.fill")
                             }
                             .font(.system(size: 12))
@@ -313,7 +313,7 @@ struct SettingsView: View {
                     }
                 }
 
-                SectionCard(title: "Startup", icon: "power", subtitle: "Run mywisper automatically") {
+                SectionCard(title: "Startup", icon: "power", subtitle: "Run My Whisper automatically") {
                     Toggle(isOn: Binding(
                         get: { launchAtLogin.isEnabled },
                         set: { launchAtLogin.setEnabled($0) }
@@ -321,7 +321,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Launch at login")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Start mywisper automatically when you log in")
+                            Text("Start My Whisper automatically when you log in")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -332,7 +332,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Show icon in Dock")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Keep mywisper reachable from the Dock even when the menu-bar icon is hidden")
+                            Text("Keep My Whisper reachable from the Dock even when the menu-bar icon is hidden")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -358,22 +358,53 @@ struct SettingsView: View {
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
                             Picker("", selection: $settings.selectedSoundName) {
-                                ForEach(SettingsManager.availableSounds, id: \.self) { name in
-                                    Text(name).tag(name)
+                                Section("System") {
+                                    ForEach(SoundLibrary.systemSounds, id: \.self) { name in
+                                        Text(name).tag(name)
+                                    }
+                                }
+                                if !SoundLibrary.customSounds.isEmpty {
+                                    Section("Custom") {
+                                        ForEach(SoundLibrary.customSounds, id: \.self) { name in
+                                            Text(name).tag(name)
+                                        }
+                                    }
                                 }
                             }
                             .labelsHidden()
-                            .frame(maxWidth: 160)
+                            .frame(maxWidth: 180)
                             .onChange(of: settings.selectedSoundName) { newValue in
-                                NSSound(named: NSSound.Name(newValue))?.play()  // preview on pick
+                                SoundLibrary.play(named: newValue)  // preview on pick
                             }
                             Button {
-                                NSSound(named: NSSound.Name(settings.selectedSoundName))?.play()
+                                SoundLibrary.play(named: settings.selectedSoundName)
                             } label: {
                                 Label("Play", systemImage: "play.circle")
                             }
                             .controlSize(.small)
                             Spacer()
+                        }
+
+                        Divider()
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 12))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Error sound")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text("Plays automatically when something fails (e.g. transcription error, dropped connection)")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                SoundLibrary.playError()
+                            } label: {
+                                Label("Play", systemImage: "play.circle")
+                            }
+                            .controlSize(.small)
                         }
                     }
                 }
@@ -393,7 +424,7 @@ struct SettingsView: View {
                     }
                 }
 
-                SectionCard(title: "Application", icon: "power", subtitle: "Restart or quit mywisper") {
+                SectionCard(title: "Application", icon: "power", subtitle: "Restart or quit My Whisper") {
                     HStack {
                         Text("Use these if the menu-bar icon is hidden.")
                             .font(.system(size: 12))
@@ -1695,9 +1726,9 @@ struct SettingsView: View {
                                     .font(.system(size: 11, weight: .medium))
                                 Text("1. System Settings > Privacy & Security > Accessibility")
                                     .font(.system(size: 11))
-                                Text("2. Remove old 'mywisper' entry if present (−)")
+                                Text("2. Remove old 'My Whisper' entry if present (−)")
                                     .font(.system(size: 11))
-                                Text("3. Add mywisper from /Applications (+)")
+                                Text("3. Add My Whisper from /Applications (+)")
                                     .font(.system(size: 11))
                                 Text("4. Restart the app")
                                     .font(.system(size: 11, weight: .semibold))
@@ -1739,7 +1770,23 @@ struct SettingsView: View {
     private var aboutTab: some View {
         ScrollView {
             VStack(spacing: 12) {
-                SectionCard(title: "mywisper", icon: "mic.fill", subtitle: appVersion) {
+                // Hero banner — switches with the system light/dark appearance and links to the
+                // product site. (Asset "Banner" provides both luminosity variants.)
+                Link(destination: URL(string: "https://mywhisper.cloud/")!) {
+                    Image("Banner")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Visit mywhisper.cloud")
+
+                SectionCard(title: "My Whisper", icon: "mic.fill", subtitle: appVersion) {
                     Text("Local-first menu bar dictation. Record speech with a global hotkey, transcribe it on-device with Whisper (or Apple Speech / Cloud), optionally refine it with AI, and paste it into the focused field.")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)

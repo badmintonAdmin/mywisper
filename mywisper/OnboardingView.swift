@@ -49,7 +49,7 @@ struct OnboardingView: View {
                     .font(.system(size: 36))
                     .foregroundColor(.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Welcome to mywisper")
+                    Text("Welcome to My Whisper")
                         .font(.system(size: 20, weight: .bold))
                     Text("Three quick steps and you're ready to dictate.")
                         .font(.system(size: 12))

@@ -260,8 +260,9 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(playStartSound, forKey: "playStartSound") }
     }
 
-    /// Small library of built-in macOS system sounds the user can pick + preview.
-    static let availableSounds = ["Pop", "Tink", "Glass", "Purr", "Bottle", "Hero", "Ping", "Submarine"]
+    /// Selectable cue sounds: built-in macOS system sounds + custom bundled mp3s,
+    /// discovered at runtime. See `SoundLibrary`.
+    static var availableSounds: [String] { SoundLibrary.allCueSounds }
 
     /// Which sound to play for the start/finish cue.
     @Published var selectedSoundName: String {

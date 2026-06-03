@@ -42,7 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "mywisper")
+            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "My Whisper")
         }
 
         buildMenu()
@@ -137,7 +137,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             iconName = "mic"
         }
-        statusItem.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "mywisper")
+        statusItem.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "My Whisper")
     }
 
     private func buildMenu() {
@@ -417,7 +417,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let homeView = HomeView()
         let hostingController = NSHostingController(rootView: homeView)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "mywisper"
+        window.title = "My Whisper"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 560, height: 520))
         window.minSize = NSSize(width: 420, height: 300)
@@ -480,7 +480,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         })
         let hostingController = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Welcome to mywisper"
+        window.title = "Welcome to My Whisper"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 520, height: 560))
         window.center()
@@ -511,7 +511,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settingsView = SettingsView()
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "mywisper Settings"
+        window.title = "My Whisper Settings"
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 820, height: 600))
         window.minSize = NSSize(width: 720, height: 520)

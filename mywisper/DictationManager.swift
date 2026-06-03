@@ -281,6 +281,7 @@ class DictationManager: ObservableObject {
             try audioRecorder.startRecording()
         } catch {
             print("mywisper: Failed to start recording: \(error.localizedDescription)")
+            playErrorCue()
             showTransientStatus("Failed to start recording — check microphone permission")
             return
         }
@@ -319,6 +320,7 @@ class DictationManager: ObservableObject {
                 showTransientStatus("Recording too short")
             } else {
                 print("mywisper: No audio file")
+                playErrorCue()
                 showTransientStatus("Recording failed")
             }
             return
@@ -597,7 +599,15 @@ class DictationManager: ObservableObject {
     /// `playStartSound` setting; the sound is `settings.selectedSoundName`.
     private func playCue() {
         guard settings.playStartSound else { return }
-        NSSound(named: NSSound.Name(settings.selectedSoundName))?.play()
+        SoundLibrary.play(named: settings.selectedSoundName)
+    }
+
+    /// Play the dedicated error sound when something genuinely fails (transcription
+    /// error, dropped connection, recording failure). Gated by the same `playStartSound`
+    /// master switch so turning sounds off silences this too.
+    private func playErrorCue() {
+        guard settings.playStartSound else { return }
+        SoundLibrary.playError()
     }
 
     /// Undo the most recent auto-paste: restore the prior clipboard and (when Accessibility is
@@ -645,6 +655,9 @@ class DictationManager: ObservableObject {
                 break
             }
         }
+        // Genuine failure (transcription crashed, network/connection error, etc.) — play
+        // the dedicated error sound and surface the message.
+        playErrorCue()
         showTransientStatus(error.localizedDescription, duration: 4.0)
     }
 
