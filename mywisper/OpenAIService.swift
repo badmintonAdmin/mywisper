@@ -78,6 +78,34 @@ class OpenAIService {
         }.resume()
     }
 
+    // MARK: - Chunking configuration
+
+    /// Per-request output ceiling we send to the API. Long transcripts are split so each
+    /// chunk's cleaned output stays comfortably under this.
+    private static let maxTokensPerRequest = 4096
+
+    /// Conservative tokens-per-character ratio. Cyrillic tokenizes far denser than English
+    /// (~1 token per 2 chars), so we assume the dense case to decide when to split — over-
+    /// estimating only makes us chunk a bit earlier, which is safe.
+    private static let tokensPerChar = 0.4
+
+    /// If the estimated cleaned output would exceed this many tokens, we split the input into
+    /// chunks rather than risk the API truncating the tail at `maxTokensPerRequest`. Sits below
+    /// the request ceiling to leave headroom for the model lightly expanding the text.
+    private static let chunkOutputTokenThreshold = 3200
+
+    /// Target output tokens per chunk when splitting. Translated to a character budget via
+    /// `tokensPerChar`. Kept well under the threshold so each chunk has slack.
+    private static let chunkTargetOutputTokens = 2400
+
+    private func estimatedOutputTokens(_ text: String) -> Int {
+        Int(Double(text.count) * Self.tokensPerChar)
+    }
+
+    /// Entry point for AI post-processing. Short/medium transcripts go straight to a single
+    /// request (unchanged fast path). Long transcripts are split on sentence boundaries and the
+    /// chunks are processed *in parallel*, then re-joined in order — so a 15-minute dictation no
+    /// longer loses its tail to the `max_tokens` ceiling, without a meaningful latency hit.
     func process(
         text: String,
         apiKey: String,
@@ -95,6 +123,128 @@ class OpenAIService {
             return
         }
 
+        // Fast path: the cleaned output comfortably fits one request.
+        guard estimatedOutputTokens(text) > Self.chunkOutputTokenThreshold else {
+            processChunk(text: text, apiKey: apiKey, model: model, systemPrompt: systemPrompt, completion: completion)
+            return
+        }
+
+        // Long transcript: split on sentence boundaries and process chunks concurrently.
+        let maxChars = Int(Double(Self.chunkTargetOutputTokens) / Self.tokensPerChar)
+        let chunks = Self.splitIntoChunks(text, maxChars: maxChars)
+
+        // Defensive: if splitting somehow produced a single chunk, just process it directly.
+        guard chunks.count > 1 else {
+            processChunk(text: text, apiKey: apiKey, model: model, systemPrompt: systemPrompt, completion: completion)
+            return
+        }
+
+        var results = [String?](repeating: nil, count: chunks.count)
+        var firstError: Error?
+        let lock = NSLock()
+        let group = DispatchGroup()
+
+        for (index, chunk) in chunks.enumerated() {
+            group.enter()
+            processChunk(text: chunk, apiKey: apiKey, model: model, systemPrompt: systemPrompt) { result in
+                lock.lock()
+                switch result {
+                case .success(let cleaned):
+                    results[index] = cleaned
+                case .failure(let error):
+                    if firstError == nil { firstError = error }
+                }
+                lock.unlock()
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .global(qos: .userInitiated)) {
+            // Any chunk failing fails the whole step; the caller falls back to the raw
+            // (unprocessed) transcript, so the user never loses words to an AI error.
+            if let error = firstError {
+                completion(.failure(error))
+                return
+            }
+            let joined = results.compactMap { $0 }
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            completion(.success(joined))
+        }
+    }
+
+    /// Split `text` into chunks no larger than `maxChars`, breaking only at sentence boundaries
+    /// so the AI never sees a sentence cut in half. A lone sentence longer than `maxChars`
+    /// (rare run-on / no punctuation) is hard-split on whitespace as a last resort.
+    static func splitIntoChunks(_ text: String, maxChars: Int) -> [String] {
+        guard maxChars > 0 else { return [text] }
+
+        // Break into sentences, keeping the terminator and any trailing whitespace attached.
+        let terminators: Set<Character> = [".", "!", "?", "…", "\n"]
+        var sentences: [String] = []
+        var current = ""
+        for ch in text {
+            current.append(ch)
+            if terminators.contains(ch) {
+                sentences.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty { sentences.append(current) }
+
+        var chunks: [String] = []
+        var buffer = ""
+        for sentence in sentences {
+            // A single oversized sentence: flush the buffer, then hard-split the sentence.
+            if sentence.count > maxChars {
+                if !buffer.isEmpty { chunks.append(buffer); buffer = "" }
+                chunks.append(contentsOf: hardSplit(sentence, maxChars: maxChars))
+                continue
+            }
+            if buffer.count + sentence.count > maxChars && !buffer.isEmpty {
+                chunks.append(buffer)
+                buffer = ""
+            }
+            buffer += sentence
+        }
+        if !buffer.isEmpty { chunks.append(buffer) }
+        return chunks.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// Last-resort splitter for a single sentence longer than `maxChars`: packs whole words up
+    /// to the limit (falling back to a raw character cut for a single word over the limit).
+    private static func hardSplit(_ text: String, maxChars: Int) -> [String] {
+        var pieces: [String] = []
+        var buffer = ""
+        for word in text.split(separator: " ", omittingEmptySubsequences: false) {
+            let candidate = buffer.isEmpty ? String(word) : buffer + " " + word
+            if candidate.count > maxChars && !buffer.isEmpty {
+                pieces.append(buffer)
+                buffer = String(word)
+            } else if candidate.count > maxChars {
+                // Single word longer than the limit — chop it into fixed-size slices.
+                var w = String(word)
+                while w.count > maxChars {
+                    pieces.append(String(w.prefix(maxChars)))
+                    w = String(w.dropFirst(maxChars))
+                }
+                buffer = w
+            } else {
+                buffer = candidate
+            }
+        }
+        if !buffer.isEmpty { pieces.append(buffer) }
+        return pieces
+    }
+
+    /// Perform a single chat-completion request for one chunk of text.
+    private func processChunk(
+        text: String,
+        apiKey: String,
+        model: String,
+        systemPrompt: String,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -111,7 +261,7 @@ class OpenAIService {
             model: model,
             messages: messages,
             temperature: 0.3,
-            max_tokens: 4096
+            max_tokens: Self.maxTokensPerRequest
         )
 
         do {

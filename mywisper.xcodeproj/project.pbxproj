@@ -19,6 +19,8 @@
 		A8CF8CE22F62817D0064176F /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = A8CF8CE12F62817D0064176F /* SwiftWhisper */; };
 		A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD02F62817D0064176F /* AudioRecorder.swift */; };
 		FEEDFACE0000000000000A01 /* AudioInputDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDFACE0000000000000A02 /* AudioInputDevices.swift */; };
+		FEEDFACE0000000000000B01 /* StreamingAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDFACE0000000000000B02 /* StreamingAudioRecorder.swift */; };
+		FEEDFACE0000000000000C01 /* LiveTranscriptionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEDFACE0000000000000C02 /* LiveTranscriptionController.swift */; };
 		A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */; };
 		A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD22F62817D0064176F /* HotkeyManager.swift */; };
 		A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8CD32F62817D0064176F /* TextPaster.swift */; };
@@ -81,6 +83,8 @@
 		A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mywisperUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		A8CF8CD02F62817D0064176F /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		FEEDFACE0000000000000A02 /* AudioInputDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDevices.swift; sourceTree = "<group>"; };
+		FEEDFACE0000000000000B02 /* StreamingAudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingAudioRecorder.swift; sourceTree = "<group>"; };
+		FEEDFACE0000000000000C02 /* LiveTranscriptionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptionController.swift; sourceTree = "<group>"; };
 		A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
 		A8CF8CD22F62817D0064176F /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		A8CF8CD32F62817D0064176F /* TextPaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPaster.swift; sourceTree = "<group>"; };
@@ -158,6 +162,8 @@
 				A8CF8CD52F62817D0064176F /* DictationManager.swift */,
 				A8CF8CD02F62817D0064176F /* AudioRecorder.swift */,
 				FEEDFACE0000000000000A02 /* AudioInputDevices.swift */,
+				FEEDFACE0000000000000B02 /* StreamingAudioRecorder.swift */,
+				FEEDFACE0000000000000C02 /* LiveTranscriptionController.swift */,
 				A8CF8CD12F62817D0064176F /* SpeechTranscriber.swift */,
 				A8CF8CD22F62817D0064176F /* HotkeyManager.swift */,
 				A8CF8CD32F62817D0064176F /* TextPaster.swift */,
@@ -358,6 +364,8 @@
 				A8CF8C9F2F62817B0064176F /* mywisperApp.swift in Sources */,
 				A8CF8CD62F62817D0064176F /* AudioRecorder.swift in Sources */,
 				FEEDFACE0000000000000A01 /* AudioInputDevices.swift in Sources */,
+				FEEDFACE0000000000000B01 /* StreamingAudioRecorder.swift in Sources */,
+				FEEDFACE0000000000000C01 /* LiveTranscriptionController.swift in Sources */,
 				A8CF8CD72F62817D0064176F /* SpeechTranscriber.swift in Sources */,
 				A8CF8CD82F62817D0064176F /* HotkeyManager.swift in Sources */,
 				A8CF8CD92F62817D0064176F /* TextPaster.swift in Sources */,
@@ -538,7 +546,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -553,7 +561,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -569,7 +577,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -584,7 +592,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -598,11 +606,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -617,11 +625,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -635,10 +643,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -652,10 +660,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.1;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

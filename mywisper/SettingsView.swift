@@ -272,6 +272,20 @@ struct SettingsView: View {
 
                 if settings.engine == .whisper {
                     whisperModelSection
+
+                    SectionCard(title: "Live Transcription", icon: "bolt", subtitle: "Transcribe long recordings while you speak") {
+                        Toggle(isOn: $settings.liveTranscriptionEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Transcribe as you speak")
+                                    .font(.system(size: 13))
+                                Text("Long dictations finish almost instantly — audio is processed in \(Int(settings.liveSegmentSeconds))-second segments during recording instead of all at once at the end.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
                 }
 
                 SectionCard(title: "Language", icon: "globe", subtitle: "Speech recognition language ('Auto' detects automatically)") {

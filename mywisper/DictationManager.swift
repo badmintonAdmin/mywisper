@@ -25,6 +25,10 @@ class DictationManager: ObservableObject {
     }
 
     private let audioRecorder = AudioRecorder()
+    private let liveController = LiveTranscriptionController()
+    /// True while the current recording is being captured via the live (segmented) path rather
+    /// than the classic single-file AudioRecorder. Decided at record start and read on stop/cancel.
+    private var usingLiveSession = false
     private let speechTranscriber = SpeechTranscriber()
     private let whisperTranscriber = WhisperTranscriber()
     private let openAIService = OpenAIService.shared
@@ -65,15 +69,17 @@ class DictationManager: ObservableObject {
             self?.cancelOperation()
         }
 
-        // Wire audio level metering to overlay (runs at 30fps)
+        // Wire audio level metering to overlay (runs at 30fps). Both the classic and live
+        // recorders feed the same handler; only one is active at a time.
         audioRecorder.onAudioLevel = { [weak self] level in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.recordingPanel?.state.audioLevel = level
-                if let start = self.recordingStartTime {
-                    self.recordingPanel?.state.elapsedSeconds = Date().timeIntervalSince(start)
-                }
-            }
+            self?.handleAudioLevel(level)
+        }
+        liveController.onAudioLevel = { [weak self] level in
+            self?.handleAudioLevel(level)
+        }
+        // Surface live segment progress as the "⚡N" badge in the recording overlay.
+        liveController.onSegmentCompleted = { [weak self] done in
+            self?.recordingPanel?.state.liveSegmentsDone = done
         }
 
         // Apply custom hotkey settings
@@ -197,7 +203,14 @@ class DictationManager: ObservableObject {
     func cancelOperation() {
         guard isRecording || isTranscribing else { return }
 
-        if isRecording {
+        if usingLiveSession {
+            // Tears down recording and any in-flight segment Whisper process; safe whether we were
+            // still recording or already transcribing the tail.
+            liveController.cancel()
+            usingLiveSession = false
+            if isRecording { print("mywisper: Recording cancelled by user") }
+            isRecording = false
+        } else if isRecording {
             // Stop recording, discard audio
             _ = audioRecorder.stopRecordingAndGetURL()
             isRecording = false
@@ -225,6 +238,23 @@ class DictationManager: ObservableObject {
         recordingPanel?.state.progress = nil
         hotkeyManager.isOperationActive = false
         hideOverlay()
+    }
+
+    /// Shared overlay meter update for whichever recorder is active.
+    private func handleAudioLevel(_ level: Float) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.recordingPanel?.state.audioLevel = level
+            if let start = self.recordingStartTime {
+                self.recordingPanel?.state.elapsedSeconds = Date().timeIntervalSince(start)
+            }
+        }
+    }
+
+    /// Live (segmented) transcription only applies to the local Whisper engine and only when the
+    /// user has it enabled and the model is ready. Every other case uses the classic single-file path.
+    private var shouldUseLiveSession: Bool {
+        settings.engine == .whisper && settings.liveTranscriptionEnabled && whisperTranscriber.isReady
     }
 
     private func startRecording() {
@@ -277,10 +307,20 @@ class DictationManager: ObservableObject {
         // Remember which app was active so we can paste back into it
         previousApp = NSWorkspace.shared.frontmostApplication
 
+        usingLiveSession = shouldUseLiveSession
         do {
-            try audioRecorder.startRecording()
+            if usingLiveSession {
+                try liveController.start(
+                    language: selectedLanguage,
+                    modelPath: settings.whisperModelPath,
+                    segmentSeconds: settings.liveSegmentSeconds
+                )
+            } else {
+                try audioRecorder.startRecording()
+            }
         } catch {
             print("mywisper: Failed to start recording: \(error.localizedDescription)")
+            usingLiveSession = false
             playErrorCue()
             showTransientStatus("Failed to start recording — check microphone permission")
             return
@@ -297,11 +337,41 @@ class DictationManager: ObservableObject {
         showOverlay(status: "Recording...")
         recordingPanel?.state.isRecording = true
         recordingPanel?.state.isTranscribing = false
+        recordingPanel?.state.isLiveSession = usingLiveSession
+        recordingPanel?.state.liveSegmentsDone = 0
         recordingPanel?.state.elapsedSeconds = 0
     }
 
     private func stopRecordingAndTranscribe() {
         guard isRecording else { return }
+
+        // Live (segmented) Whisper path: most segments were already transcribed while recording.
+        // Stop the recorder, then deliver the combined transcript once the tail finishes.
+        if usingLiveSession {
+            isRecording = false
+            isTranscribing = true
+            recordingPanel?.state.statusText = "Transcribing..."
+            recordingPanel?.state.isRecording = false
+            recordingPanel?.state.isTranscribing = true
+            // Segment-level progress isn't meaningful to the user; show the indeterminate spinner.
+            recordingPanel?.state.progress = nil
+
+            let completionHandler = makeTranscriptionCompletionHandler()
+            liveController.finish { [weak self] result in
+                guard let self = self, !self.isCancelled else { return }
+                // An empty result combined with the too-short flag means an accidental tap —
+                // mirror the classic path instead of running the full paste pipeline on "".
+                if case .success(let text) = result, text.isEmpty, self.liveController.lastRecordingWasTooShort {
+                    self.isTranscribing = false
+                    self.hideOverlay()
+                    print("mywisper: Recording too short")
+                    self.showTransientStatus("Recording too short")
+                    return
+                }
+                completionHandler(result)
+            }
+            return
+        }
 
         let audioFileURL = audioRecorder.stopRecordingAndGetURL()
         isRecording = false

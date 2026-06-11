@@ -13,6 +13,12 @@ class OverlayState: ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var isRecording: Bool = false
     @Published var isTranscribing: Bool = false
+    /// True while the current recording is using the live (segmented) path. Drives the slow pulse
+    /// on the red dot so the user can tell at a glance that on-the-fly transcription is active.
+    @Published var isLiveSession: Bool = false
+    /// Number of audio segments already transcribed on the fly during the current live recording.
+    /// Shown as a small "⚡N" badge so the user can SEE chunks being processed while still speaking.
+    @Published var liveSegmentsDone: Int = 0
     @Published var elapsedSeconds: TimeInterval = 0
     /// Determinate transcription progress (0...1). nil → show an indeterminate indicator
     /// (e.g. AI processing or a cloud upload where no real percentage is available).
@@ -114,10 +120,7 @@ struct RecordingOverlayView: View {
             // Left: red dot indicator
             ZStack {
                 if state.isRecording {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 7, height: 7)
-                        .shadow(color: .red.opacity(0.8), radius: 4)
+                    RecordingDot(isLive: state.isLiveSession)
                 } else if state.isTranscribing {
                     TranscribingDotsView()
                         .frame(width: 24, height: 14)
@@ -141,6 +144,17 @@ struct RecordingOverlayView: View {
                     RecordingTimerView(elapsed: state.elapsedSeconds)
                 }
 
+                // Live proof: how many segments have already been transcribed on the fly.
+                if state.isRecording, state.isLiveSession, state.liveSegmentsDone > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "bolt.fill").font(.system(size: 8, weight: .bold))
+                        Text("\(state.liveSegmentsDone)").font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    }
+                    .foregroundColor(.green)
+                    .help("\(state.liveSegmentsDone) part(s) already transcribed live")
+                    .padding(.leading, 4)
+                }
+
                 // Real percentage for long local-Whisper runs; AI/cloud stay indeterminate.
                 if state.isTranscribing, let progress = state.progress {
                     Text("\(Int((progress * 100).rounded()))%")
@@ -149,6 +163,7 @@ struct RecordingOverlayView: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            .padding(.trailing, 8)
 
             // Right: stop button (recording) / cancel affordance (transcribing)
             if state.isRecording {
@@ -204,6 +219,30 @@ struct RecordingOverlayView: View {
             }
         )
         .fixedSize()
+    }
+}
+
+// MARK: - Recording Dot
+
+/// The red recording indicator. Static in the classic path; a slow, gentle pulse when live
+/// (segmented) transcription is running, as a quiet "working on the fly" cue.
+struct RecordingDot: View {
+    let isLive: Bool
+    @State private var pulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 7, height: 7)
+            .shadow(color: .red.opacity(0.8), radius: 4)
+            .scaleEffect(isLive && pulsing ? 1.5 : 1.0)
+            .opacity(isLive && pulsing ? 0.5 : 1.0)
+            .animation(
+                isLive ? .easeInOut(duration: 1.1).repeatForever(autoreverses: true) : .default,
+                value: pulsing
+            )
+            .onAppear { if isLive { pulsing = true } }
+            .onChange(of: isLive) { pulsing = $0 }
     }
 }
 

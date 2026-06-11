@@ -157,6 +157,20 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(selectedInputDeviceID, forKey: "selectedInputDeviceID") }
     }
 
+    /// When enabled, long Whisper dictations are transcribed live in fixed-length segments while
+    /// you're still speaking, so stopping a multi-minute recording returns the text almost
+    /// instantly instead of running Whisper over the whole file at the end. Whisper engine only;
+    /// short recordings behave exactly as before (a single tail segment).
+    @Published var liveTranscriptionEnabled: Bool {
+        didSet { UserDefaults.standard.set(liveTranscriptionEnabled, forKey: "liveTranscriptionEnabled") }
+    }
+
+    /// Length of each live-transcription audio segment, in seconds. Larger values mean fewer seams
+    /// (slightly better accuracy at segment boundaries) but more audio left to process when you stop.
+    @Published var liveSegmentSeconds: Double {
+        didSet { UserDefaults.standard.set(liveSegmentSeconds, forKey: "liveSegmentSeconds") }
+    }
+
     @Published var hotkeyDoubleTapInterval: Double {
         didSet { UserDefaults.standard.set(hotkeyDoubleTapInterval, forKey: "hotkeyDoubleTapInterval") }
     }
@@ -339,6 +353,12 @@ class SettingsManager: ObservableObject {
         self.whisperModelPath = UserDefaults.standard.string(forKey: "whisperModelPath") ?? ""
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
         self.selectedInputDeviceID = UserDefaults.standard.string(forKey: "selectedInputDeviceID") ?? ""
+
+        // Live transcription: default ON so long dictations feel fast out of the box.
+        self.liveTranscriptionEnabled = UserDefaults.standard.object(forKey: "liveTranscriptionEnabled") == nil
+            ? true : UserDefaults.standard.bool(forKey: "liveTranscriptionEnabled")
+        let storedSegSeconds = UserDefaults.standard.double(forKey: "liveSegmentSeconds")
+        self.liveSegmentSeconds = storedSegSeconds > 0 ? storedSegSeconds : 60
 
         let interval = UserDefaults.standard.double(forKey: "hotkeyDoubleTapInterval")
         self.hotkeyDoubleTapInterval = interval > 0 ? interval : 0.4
