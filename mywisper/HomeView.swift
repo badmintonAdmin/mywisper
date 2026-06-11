@@ -199,6 +199,7 @@ struct HomeView: View {
                         record: record,
                         isCopied: copiedId == record.id,
                         onCopy: { copyText(record) },
+                        onCopyOriginal: { copyOriginal(record) },
                         onDelete: { withAnimation(.easeOut(duration: 0.2)) { history.delete(id: record.id) } }
                     )
                 }
@@ -216,6 +217,16 @@ struct HomeView: View {
             if copiedId == record.id { copiedId = nil }
         }
     }
+
+    /// Copy the original, pre-AI dictation (falls back to the final text if none was stored).
+    private func copyOriginal(_ record: TranscriptionRecord) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(record.rawText ?? record.text, forType: .string)
+        copiedId = record.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedId == record.id { copiedId = nil }
+        }
+    }
 }
 
 // MARK: - Transcription Row
@@ -224,6 +235,7 @@ struct TranscriptionRow: View {
     let record: TranscriptionRecord
     let isCopied: Bool
     let onCopy: () -> Void
+    let onCopyOriginal: () -> Void
     let onDelete: () -> Void
 
     @State private var isHovered = false
@@ -252,20 +264,33 @@ struct TranscriptionRow: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Original text (AI processed)
+            // Original text (AI processed) — the AI step can change wording substantially, so the
+            // pre-processing dictation is kept available here, tucked under a disclosure.
             if record.aiProcessed, let rawText = record.rawText, rawText != record.text {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showOriginal.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showOriginal ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
-                        Text("Original text")
-                            .font(.system(size: 11))
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showOriginal.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: showOriginal ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("Original text")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundColor(.secondary)
                     }
-                    .foregroundColor(.secondary)
+                    .buttonStyle(.plain)
+
+                    if showOriginal {
+                        Button(action: onCopyOriginal) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy original (before AI)")
+                    }
                 }
-                .buttonStyle(.plain)
 
                 if showOriginal {
                     Text(rawText)
@@ -363,6 +388,14 @@ struct TranscriptionRow: View {
         .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
+        }
+        .contextMenu {
+            Button(action: onCopy) { Label("Copy text", systemImage: "doc.on.doc") }
+            if record.aiProcessed, let raw = record.rawText, raw != record.text {
+                Button(action: onCopyOriginal) { Label("Copy original (before AI)", systemImage: "text.quote") }
+            }
+            Divider()
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
         }
     }
 }

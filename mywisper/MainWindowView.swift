@@ -676,11 +676,30 @@ private struct HistorySidePanel: View {
         .buttonStyle(.plain)
         .focusable(false)
         .help("Copy to clipboard")
+        .contextMenu {
+            Button { copy(rec) } label: { Label("Copy text", systemImage: "doc.on.doc") }
+            // When AI post-processing changed the text, let the user grab the original dictation too.
+            if rec.aiProcessed, let raw = rec.rawText, raw != rec.text {
+                Button { copyOriginal(rec) } label: { Label("Copy original (before AI)", systemImage: "text.quote") }
+            }
+            Divider()
+            Button(role: .destructive) { history.delete(id: rec.id) } label: { Label("Delete", systemImage: "trash") }
+        }
     }
 
     private func copy(_ rec: TranscriptionRecord) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(rec.text, forType: .string)
+        copiedId = rec.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if copiedId == rec.id { copiedId = nil }
+        }
+    }
+
+    /// Copy the original, pre-AI dictation (falls back to the final text if none was stored).
+    private func copyOriginal(_ rec: TranscriptionRecord) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(rec.rawText ?? rec.text, forType: .string)
         copiedId = rec.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             if copiedId == rec.id { copiedId = nil }
