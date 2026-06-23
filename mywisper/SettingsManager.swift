@@ -57,6 +57,7 @@ struct DictationLanguage: Identifiable, Equatable {
         DictationLanguage(code: "zh-CN", displayName: "中文"),
         DictationLanguage(code: "ja-JP", displayName: "日本語"),
         DictationLanguage(code: "ko-KR", displayName: "한국어"),
+        DictationLanguage(code: "id-ID", displayName: "Bahasa Indonesia"),
     ]
 
     static func displayName(for code: String) -> String {
