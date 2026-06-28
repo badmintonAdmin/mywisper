@@ -45,6 +45,13 @@ class DictationManager: ObservableObject {
     private var settingsCancellables = Set<AnyCancellable>()
     private var recordingStartTime: Date?
     private var isCancelled = false
+    /// Highest normalized audio level (0...1) seen during the current recording. Used to detect a
+    /// dead/silent mic: Whisper hallucinates stock phrases ("Субтитры делал…", "you you", random
+    /// languages) on near-silent input, so we skip transcription entirely when nothing was heard.
+    private var maxAudioLevel: Float = 0
+    /// Below this peak level the whole recording is treated as silence (≈ -47 dBFS). Deliberately
+    /// low so only a genuinely dead mic trips it — real speech, even quiet, peaks well above this.
+    private let silenceLevelThreshold: Float = 0.06
     /// ID of the in-flight pending recording (cloud only); nil if no cloud request is active.
     private var currentPendingID: UUID?
 
@@ -244,6 +251,7 @@ class DictationManager: ObservableObject {
     private func handleAudioLevel(_ level: Float) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            self.maxAudioLevel = max(self.maxAudioLevel, level)
             self.recordingPanel?.state.audioLevel = level
             if let start = self.recordingStartTime {
                 self.recordingPanel?.state.elapsedSeconds = Date().timeIntervalSince(start)
@@ -328,6 +336,7 @@ class DictationManager: ObservableObject {
 
         isRecording = true
         isCancelled = false
+        maxAudioLevel = 0
         recordingStartTime = Date()
         hotkeyManager.isOperationActive = true
 
@@ -344,6 +353,27 @@ class DictationManager: ObservableObject {
 
     private func stopRecordingAndTranscribe() {
         guard isRecording else { return }
+
+        // Silent-mic guard: if nothing rose above near-silence for the whole recording, the audio
+        // is effectively empty. Whisper (and cloud Whisper) hallucinate stock phrases on silence,
+        // so skip transcription entirely and tell the user instead of pasting garbage. Only trips
+        // on a genuinely dead mic (wrong input device, muted, unplugged) — the threshold is far
+        // below real speech.
+        if maxAudioLevel < silenceLevelThreshold {
+            if usingLiveSession {
+                liveController.cancel()
+                usingLiveSession = false
+            } else {
+                _ = audioRecorder.stopRecordingAndGetURL()
+            }
+            isRecording = false
+            isTranscribing = false
+            recordingPanel?.state.progress = nil
+            hideOverlay()
+            print("mywisper: Recording was silent (peak level \(maxAudioLevel)) — skipping transcription")
+            showTransientStatus("No speech detected — check your microphone")
+            return
+        }
 
         // Live (segmented) Whisper path: most segments were already transcribed while recording.
         // Stop the recorder, then deliver the combined transcript once the tail finishes.
@@ -494,7 +524,11 @@ class DictationManager: ObservableObject {
                 guard !self.isCancelled else { return }
 
                 switch result {
-                case .success(let rawText):
+                case .success(let transcribedText):
+                    // Drop known Whisper hallucinations (YouTube-style "Субтитры делал…", "Amara.org",
+                    // etc.) that surface on near-silent/low-SNR audio — treat them as no speech so the
+                    // empty-result path below shows a notice instead of pasting the bogus phrase.
+                    let rawText = self.isLikelyHallucination(transcribedText) ? "" : transcribedText
                     if !rawText.isEmpty && self.settings.aiProcessingEnabled && !self.settings.openAIKey.isEmpty {
                         // AI post-processing step
                         self.recordingPanel?.state.statusText = "AI Processing..."
@@ -729,6 +763,31 @@ class DictationManager: ObservableObject {
         // the dedicated error sound and surface the message.
         playErrorCue()
         showTransientStatus(error.localizedDescription, duration: 4.0)
+    }
+
+    /// Conservative detector for Whisper's stock hallucinations on near-silent / low-SNR audio.
+    /// Kept deliberately narrow so it never eats real dictation: it only fires on subtitle-credit
+    /// signatures that essentially never occur in speech, or on degenerate single-token repetition.
+    /// (Phrases like "продолжение следует" are intentionally NOT listed — they can be real.)
+    private func isLikelyHallucination(_ text: String) -> Bool {
+        let normalized = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+
+        // Subtitle/credit signatures — if any appears, the whole result is bogus.
+        let signatures = [
+            "dimatorzok", "amara.org",
+            "субтитры делал", "субтитры создавал", "субтитры подготовил",
+            "субтитры предоставлены", "редактор субтитров", "субтитры добавил",
+        ]
+        if signatures.contains(where: { normalized.contains($0) }) { return true }
+
+        // Degenerate repetition of a single short token (e.g. "you you you", "так так так так").
+        let words = normalized
+            .components(separatedBy: CharacterSet(charactersIn: " .,!?-—…\n\t\""))
+            .filter { !$0.isEmpty }
+        if words.count >= 3, Set(words).count == 1 { return true }
+
+        return false
     }
 
     private func showOverlay(status: String) {
