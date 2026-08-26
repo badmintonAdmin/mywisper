@@ -19,9 +19,13 @@ class DictationManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(selectedLanguage, forKey: "selectedLanguage")
             settings.selectedLanguage = selectedLanguage
-            speechTranscriber.setLanguage(selectedLanguage)
-            whisperTranscriber.setLanguage(selectedLanguage)
+            // Engines never see the "system" sentinel — hand them the concrete language.
+            let resolved = DictationLanguage.resolved(selectedLanguage)
+            speechTranscriber.setLanguage(resolved)
+            speechConfiguredLanguage = resolved
+            whisperTranscriber.setLanguage(resolved)
             prewarmFastEngineIfNeeded()
+            prewarmTranslationIfNeeded()
         }
     }
 
@@ -78,6 +82,32 @@ class DictationManager: ObservableObject {
     /// ID of the in-flight pending recording (cloud only); nil if no cloud request is active.
     private var currentPendingID: UUID?
 
+    // MARK: Session triggers (push-to-talk, second language, translate)
+
+    /// Which trigger started a session: the primary hotkey, the second-language key
+    /// (right ⌥) or the translate key (right ⌘).
+    enum DictationTrigger { case primary, secondary, translate }
+
+    /// A press shorter than this is a tap (hands-free session, tap again to stop);
+    /// held longer it's push-to-talk (release finishes the dictation).
+    static let pushToTalkHoldThreshold: TimeInterval = 0.35
+    /// A bare-modifier session younger than this is cancelled when another key is
+    /// typed — the user was using ⌥/⌘ as a modifier, not dictating.
+    static let modifierInterruptWindow: TimeInterval = 0.6
+
+    private var activeTrigger: DictationTrigger?
+    private var triggerDownAt: Date?
+    /// The language THIS session dictates in (the second-language key overrides the
+    /// global pick for one session, without touching Settings).
+    private var sessionLanguage: String = "en-US"
+    /// Whether this session's transcript is translated before pasting.
+    private var sessionTranslate = false
+
+    /// Keeps macOS from App-Napping the process mid-session (throttled TimelineView
+    /// clocks and timers glitch the first session after hours idle). Held from record
+    /// start until the text is delivered or the session dies.
+    private let activity = ActivityAssertion(reason: "Dictation session")
+
     init() {
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
 
@@ -85,6 +115,18 @@ class DictationManager: ObservableObject {
 
         hotkeyManager.onToggle = { [weak self] in
             self?.toggleRecording()
+        }
+
+        // Push-to-talk gestures: the custom hotkey and the two bare-modifier triggers
+        // report down/up; the gesture (hold vs tap) is resolved here.
+        hotkeyManager.onPrimaryDown = { [weak self] in self?.handleTriggerDown(.primary) }
+        hotkeyManager.onPrimaryUp = { [weak self] in self?.handleTriggerUp(.primary) }
+        hotkeyManager.onSecondaryDown = { [weak self] in self?.handleTriggerDown(.secondary) }
+        hotkeyManager.onSecondaryUp = { [weak self] in self?.handleTriggerUp(.secondary) }
+        hotkeyManager.onTranslateDown = { [weak self] in self?.handleTriggerDown(.translate) }
+        hotkeyManager.onTranslateUp = { [weak self] in self?.handleTriggerUp(.translate) }
+        hotkeyManager.onModifierTriggerInterrupted = { [weak self] in
+            self?.handleModifierTriggerInterrupted()
         }
 
         hotkeyManager.onToggleAI = { [weak self] in
@@ -116,7 +158,8 @@ class DictationManager: ObservableObject {
         applyHotkeySettings()
         hotkeyManager.register()
 
-        speechTranscriber.configure(language: selectedLanguage)
+        speechTranscriber.configure(language: DictationLanguage.resolved(selectedLanguage))
+        speechConfiguredLanguage = DictationLanguage.resolved(selectedLanguage)
 
         // Fast Apple engine (macOS 26+): learn which languages it supports, then prewarm so the
         // first hotkey press is instant. The supported set also gates the per-session fallback.
@@ -227,6 +270,32 @@ class DictationManager: ObservableObject {
             self?.hotkeyManager.register()
         }.store(in: &settingsCancellables)
 
+        // Second language: arm/disarm its trigger and keep its engine prewarmed so the
+        // right-⌥ press answers as fast as the primary.
+        settings.$secondLanguage.sink { [weak self] language in
+            guard let self = self else { return }
+            self.hotkeyManager.secondaryTriggerEnabled = !language.isEmpty
+            if !language.isEmpty, self.settings.engine == .fastApple {
+                if #available(macOS 26.0, *) {
+                    let service = self.fastSpeech
+                    Task { [fastSupportedCodes = self.fastSupportedCodes] in
+                        guard fastSupportedCodes.contains(language.lowercased()) else { return }
+                        await service.prewarm(languageCode: language)
+                    }
+                }
+            }
+        }.store(in: &settingsCancellables)
+
+        // Translation target: arm/disarm the translate trigger and prewarm the pair.
+        settings.$translationTargetLanguage.sink { [weak self] target in
+            guard let self = self else { return }
+            self.hotkeyManager.translateTriggerEnabled = {
+                if #available(macOS 26.0, *) { return !target.isEmpty }
+                return false
+            }()
+            self.prewarmTranslationIfNeeded(target: target)
+        }.store(in: &settingsCancellables)
+
         // Retry from system notification
         NotificationCenter.default.publisher(for: .retryPendingRequested)
             .sink { [weak self] note in
@@ -244,11 +313,74 @@ class DictationManager: ObservableObject {
         }
     }
 
+    // MARK: Trigger gestures
+
+    /// A trigger was pressed. While idle it starts a session in that trigger's language
+    /// (and translate mode); while recording, any trigger press finishes the session —
+    /// that's both the hands-free "tap again" and the second press of a toggle.
+    func handleTriggerDown(_ trigger: DictationTrigger) {
+        guard !isTranscribing else { return }
+        if isRecording {
+            stopRecordingAndTranscribe()
+            return
+        }
+
+        let language: String
+        var translate = false
+        switch trigger {
+        case .primary:
+            language = selectedLanguage
+        case .secondary:
+            guard !settings.secondLanguage.isEmpty else { return }
+            language = settings.secondLanguage
+        case .translate:
+            guard settings.translationActive else { return }
+            language = selectedLanguage
+            translate = true
+        }
+        activeTrigger = trigger
+        triggerDownAt = Date()
+        startRecording(language: language, translate: translate)
+    }
+
+    /// The trigger was released. If it was held past the threshold this was
+    /// push-to-talk: finish and paste. A quick tap leaves the session running
+    /// hands-free (the next press stops it).
+    func handleTriggerUp(_ trigger: DictationTrigger) {
+        guard isRecording, trigger == activeTrigger, settings.pushToTalkEnabled else { return }
+        guard let down = triggerDownAt else { return }
+        if Date().timeIntervalSince(down) >= Self.pushToTalkHoldThreshold {
+            stopRecordingAndTranscribe()
+        }
+    }
+
+    /// Another key was typed while a bare-modifier trigger (right ⌥/⌘) was held. A
+    /// session that young wasn't dictation — the user is typing with the modifier —
+    /// so cancel it; an established session ignores stray keys.
+    func handleModifierTriggerInterrupted() {
+        guard isRecording,
+              let trigger = activeTrigger, trigger != .primary,
+              let down = triggerDownAt,
+              Date().timeIntervalSince(down) < Self.modifierInterruptWindow
+        else { return }
+        cancelOperation()
+    }
+
     /// Abort the current recording or transcription without pasting
     func cancelOperation() {
         guard isRecording || isTranscribing else { return }
 
-        if usingFastSession {
+        if usingDualSession {
+            if #available(macOS 26.0, *) {
+                let service = fastSpeech
+                Task { await service.cancel() }
+            }
+            speechTranscriber.cancelLiveSession()
+            usingDualSession = false
+            dualPlan = nil
+            if isRecording { print("mywisper: Recording cancelled by user") }
+            isRecording = false
+        } else if usingFastSession {
             if #available(macOS 26.0, *) {
                 let service = fastSpeech
                 Task { await service.cancel() }
@@ -295,6 +427,7 @@ class DictationManager: ObservableObject {
         recordingStartTime = nil
         recordingPanel?.state.progress = nil
         hotkeyManager.isOperationActive = false
+        activity.release()
         hideOverlay()
     }
 
@@ -346,28 +479,139 @@ class DictationManager: ObservableObject {
         settings.engine == .whisper && settings.liveTranscriptionEnabled && whisperTranscriber.isReady
     }
 
-    /// True when the fast (streaming) Apple engine can serve the current language on this OS.
-    /// False silently falls the session back to classic SFSpeechRecognizer — that covers
-    /// Russian and "Auto" (not supported by Apple's new API yet) and macOS < 26.
-    private var fastSessionUsable: Bool {
+    /// True when the fast (streaming) Apple engine can serve `code` on this OS. False falls
+    /// the session back to classic SFSpeechRecognizer — that covers Russian and "Auto" (not
+    /// supported by Apple's new API yet) and macOS < 26.
+    private func fastUsable(_ code: String) -> Bool {
         guard settings.engine == .fastApple else { return false }
         guard #available(macOS 26.0, *) else { return false }
-        return fastSupportedCodes.contains(selectedLanguage.lowercased())
+        return fastSupportedCodes.contains(code.lowercased())
     }
 
-    /// Keep a warm analyzer for the selected language whenever the fast engine is active, so
-    /// the hotkey press spends zero time on model setup. Safe to call anytime; no-ops when the
-    /// engine/language/OS doesn't qualify.
+    /// Whether THIS session (its own language — the second-language key may override the
+    /// global pick) runs on the fast engine.
+    private var fastSessionUsable: Bool { fastUsable(sessionLanguage) }
+
+    /// Keep warm analyzers for the selected language — and the second language, whose
+    /// trigger must answer just as fast — whenever the fast engine is active. Safe to call
+    /// anytime; no-ops when the engine/language/OS doesn't qualify.
     private func prewarmFastEngineIfNeeded(engineOverride: TranscriptionEngine? = nil) {
         guard (engineOverride ?? settings.engine) == .fastApple else { return }
         if #available(macOS 26.0, *) {
-            let code = selectedLanguage
-            guard fastSupportedCodes.contains(code.lowercased()) else { return }
+            // Auto means the dual race — prewarm both of its sides; otherwise the picked
+            // language plus the second-language trigger's.
+            var codes: [String]
+            if selectedLanguage == DictationLanguage.autoCode {
+                let (primary, other) = autoRacePair()
+                codes = [primary, other ?? ""]
+            } else {
+                codes = [
+                    DictationLanguage.resolved(selectedLanguage),
+                    DictationLanguage.resolved(settings.secondLanguage),
+                ]
+            }
+            codes = codes.filter { !$0.isEmpty }
+            let supported = fastSupportedCodes
             let service = fastSpeech
             Task {
-                await service.prewarm(languageCode: code)
+                for code in codes where supported.contains(code.lowercased()) {
+                    await service.prewarm(languageCode: code)
+                }
             }
         }
+    }
+
+    /// Start the dual-language race: ONE microphone capture (the fast engine's tap) fans out
+    /// to both recognizers — converted buffers stream into SpeechAnalyzer, raw buffers into a
+    /// feed-mode SFSpeechRecognizer session. Both transcribe while the user speaks; the
+    /// winner is picked at stop by confidence + word count, costing no extra latency.
+    private func startDualSession() throws {
+        guard #available(macOS 26.0, *), let plan = dualPlan else { return }
+
+        // Live-draft partials follow the system language's side — the one the user most
+        // likely speaks — so the island's Compact text isn't gibberish half the time.
+        let showLegacyPartials = plan.legacy == DictationLanguage.resolvedSystemCode()
+
+        var legacyPartialHandler: ((String) -> Void)?
+        var fastUpdateHandler: (@Sendable (String) -> Void)?
+        if showLegacyPartials {
+            legacyPartialHandler = { [weak self] text in self?.pushDualLiveText(text) }
+        } else {
+            fastUpdateHandler = { [weak self] text in self?.pushDualLiveText(text) }
+        }
+
+        try speechTranscriber.startLiveSessionFeed(
+            onPartial: legacyPartialHandler,
+            onFailure: { message in
+                // The legacy side dying mid-race is not fatal — the fast side continues and
+                // wins by default at stop.
+                print("mywisper: dual race — legacy side failed: \(message)")
+            }
+        )
+
+        let code = plan.fast
+        let service = fastSpeech
+        let transcriber = speechTranscriber
+        fastStartTask = Task { [weak self] in
+            do {
+                try await service.start(
+                    languageCode: code,
+                    onLevel: { [weak self] level in
+                        self?.handleAudioLevel(level)
+                    },
+                    onUpdate: fastUpdateHandler,
+                    onRawBuffer: { buffer in
+                        transcriber.appendLiveBuffer(buffer)
+                    },
+                    onFailure: { [weak self] message in
+                        DispatchQueue.main.async { self?.failFastSession(message) }
+                    }
+                )
+            } catch {
+                DispatchQueue.main.async { self?.failFastSession(error.localizedDescription) }
+            }
+        }
+    }
+
+    /// Live-draft feed for the dual race (any thread).
+    private func pushDualLiveText(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            self.recordingPanel?.state.liveText = text
+        }
+    }
+
+    /// The race's verdict: does the legacy (SFSpeechRecognizer) side win?
+    ///
+    /// Both recognizers report per-word confidence, and a recognizer fed the wrong language
+    /// scores DRAMATICALLY lower (measured on this machine with the new API: right language
+    /// ≈ 0.91–0.97, wrong language ≈ 0.04–0.28 — its "transcript" was literally commas).
+    /// So the primary rule is a straight comparison; heuristics only break near-ties.
+    private static func dualLegacyWins(
+        fastText: String, fastConfidence: Double?,
+        legacyText: String, legacyConfidence: Double
+    ) -> Bool {
+        func words(_ s: String) -> Int {
+            s.split(whereSeparator: { $0.isWhitespace }).count
+        }
+        /// Punctuation-only "transcripts" (the wrong-language failure mode) count as empty.
+        func meaningful(_ s: String) -> Bool {
+            s.contains(where: { $0.isLetter || $0.isNumber })
+        }
+        let fast = fastText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let legacy = legacyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !meaningful(legacy) { return false }
+        if !meaningful(fast) { return true }
+
+        if let fastConfidence, abs(fastConfidence - legacyConfidence) > 0.08 {
+            return legacyConfidence > fastConfidence
+        }
+        // Near-tie or no fast confidence: fall back to absolute thresholds + word count.
+        if legacyConfidence >= 0.55 { return true }
+        if legacyConfidence <= 0.30 { return false }
+        let lw = words(legacy), fw = words(fast)
+        if lw != fw { return lw > fw }
+        return legacyConfidence >= 0.45
     }
 
     /// Kick off a streaming fast-engine session. Setup is async (actor hop + analyzer attach,
@@ -375,7 +619,7 @@ class DictationManager: ObservableObject {
     /// UI down from inside the task.
     private func startFastSession() {
         guard #available(macOS 26.0, *) else { return }
-        let code = selectedLanguage
+        let code = sessionLanguage
         let service = fastSpeech
         fastStartTask = Task { [weak self] in
             do {
@@ -413,9 +657,15 @@ class DictationManager: ObservableObject {
     }
 
     /// Tear down a fast session that died while recording (mic failure, analyzer error).
+    /// Also ends a dual race — its microphone lives in the fast session's tap.
     /// Must be called on the main thread.
     private func failFastSession(_ message: String) {
-        guard usingFastSession, isRecording else { return }
+        guard usingFastSession || usingDualSession, isRecording else { return }
+        if usingDualSession {
+            speechTranscriber.cancelLiveSession()
+            usingDualSession = false
+            dualPlan = nil
+        }
         usingFastSession = false
         isRecording = false
         recordingStartTime = nil
@@ -428,18 +678,79 @@ class DictationManager: ObservableObject {
         showTransientStatus(message, duration: 4.0)
     }
 
-    private func startRecording() {
+    /// The language the classic speech recognizer is currently configured for; lets a
+    /// second-language session reconfigure only when it actually differs.
+    private var speechConfiguredLanguage: String?
+
+    /// The two languages the Auto race runs: the user's first preferred language, paired
+    /// with the explicit second language when set, else the next distinct preferred
+    /// language (a bilingual Mac lists both — ["en-RU", "ru-RU"] races en vs ru out of
+    /// the box), else English. nil `other` = nothing to race against.
+    private func autoRacePair() -> (primary: String, other: String?) {
+        let preferred = DictationLanguage.preferredCodes()
+        let primary = preferred.first ?? "en-US"
+        var other: String?
+        if !settings.secondLanguage.isEmpty {
+            other = DictationLanguage.resolved(settings.secondLanguage)
+        } else {
+            other = preferred.dropFirst().first(where: { $0 != primary })
+            if other == nil && primary != "en-US" { other = "en-US" }
+        }
+        if other == primary { other = nil }
+        return (primary, other)
+    }
+
+    /// The dual-language race this session runs, or nil for a single-language session.
+    /// Auto + Apple Live: the fast side is whichever language SpeechAnalyzer supports,
+    /// the legacy side (SFSpeechRecognizer) takes the other; the winner is picked at stop.
+    private var dualPlan: (fast: String, legacy: String)?
+    private var usingDualSession = false
+
+    private func startRecording(language: String? = nil, translate: Bool = false) {
         guard !isRecording && !isTranscribing else { return }
+
+        let requested = language ?? selectedLanguage
+        sessionLanguage = DictationLanguage.resolved(requested)
+        sessionTranslate = translate
+        if language == nil { activeTrigger = activeTrigger ?? .primary }
+
+        // Auto + Apple Live = the dual-language race. Selecting anything but Auto switches
+        // it off. The pair comes from `autoRacePair()` — the user's own bilingual setup.
+        dualPlan = nil
+        if requested == DictationLanguage.autoCode && settings.engine == .fastApple && !translate {
+            let (primary, maybeOther) = autoRacePair()
+            if let other = maybeOther {
+                if fastUsable(primary) {
+                    dualPlan = (fast: primary, legacy: other)
+                } else if fastUsable(other) {
+                    dualPlan = (fast: other, legacy: primary)
+                }
+            }
+            // Provisional until the winner is known; with no race possible, dictate in the
+            // primary preferred language through whichever path serves it.
+            sessionLanguage = dualPlan?.fast ?? primary
+        }
 
         // Check engine readiness
         switch settings.engine {
         case .apple, .fastApple:
-            // The fast engine needs no readiness check (it prepares itself), but its fallback
-            // path — unsupported language (Russian, Auto) or macOS < 26 — runs through the
-            // classic recognizer, which must be ready.
-            if settings.engine == .apple || !fastSessionUsable {
-                if !speechTranscriber.isReady {
-                    speechTranscriber.configure(language: selectedLanguage)
+            // The fast engine needs no readiness check (it prepares itself), but the classic
+            // recognizer must be ready whenever it participates: the .apple engine itself,
+            // the fallback for languages SpeechAnalyzer can't do, or the dual race's legacy side.
+            let legacyLanguage: String?
+            if settings.engine == .apple {
+                legacyLanguage = sessionLanguage
+            } else if let plan = dualPlan {
+                legacyLanguage = plan.legacy
+            } else if !fastSessionUsable {
+                legacyLanguage = sessionLanguage
+            } else {
+                legacyLanguage = nil
+            }
+            if let lang = legacyLanguage {
+                if !speechTranscriber.isReady || speechConfiguredLanguage != lang {
+                    speechTranscriber.configure(language: lang)
+                    speechConfiguredLanguage = lang
                     guard speechTranscriber.isReady else {
                         print("mywisper: Speech recognizer not available")
                         showTransientStatus("Speech recognizer not available")
@@ -484,12 +795,16 @@ class DictationManager: ObservableObject {
         previousApp = NSWorkspace.shared.frontmostApplication
 
         usingLiveSession = shouldUseLiveSession
-        usingFastSession = fastSessionUsable
+        usingDualSession = dualPlan != nil
+        usingFastSession = !usingDualSession && fastSessionUsable
         // Apple Live with a language the new API can't do (Russian, Auto) or macOS < 26:
         // stream into the classic recognizer instead, so stopping is still near-instant.
-        usingLegacyLiveSession = !usingFastSession && settings.engine == .fastApple && speechTranscriber.isReady
+        usingLegacyLiveSession = !usingDualSession && !usingFastSession
+            && settings.engine == .fastApple && speechTranscriber.isReady
         do {
-            if usingFastSession {
+            if usingDualSession {
+                try startDualSession()
+            } else if usingFastSession {
                 // Async setup; failures surface via failFastSession from inside the task.
                 startFastSession()
             } else if usingLegacyLiveSession {
@@ -509,7 +824,7 @@ class DictationManager: ObservableObject {
                 )
             } else if usingLiveSession {
                 try liveController.start(
-                    language: selectedLanguage,
+                    language: sessionLanguage,
                     modelPath: settings.whisperModelPath,
                     segmentSeconds: settings.liveSegmentSeconds
                 )
@@ -521,9 +836,16 @@ class DictationManager: ObservableObject {
             usingLiveSession = false
             usingFastSession = false
             usingLegacyLiveSession = false
+            usingDualSession = false
+            dualPlan = nil
             playErrorCue()
             showTransientStatus("Failed to start recording — check microphone permission")
             return
+        }
+
+        // Whisper transcribes in the session's language (restored on delivery).
+        if settings.engine == .whisper && sessionLanguage != selectedLanguage {
+            whisperTranscriber.setLanguage(sessionLanguage)
         }
 
         isRecording = true
@@ -531,11 +853,26 @@ class DictationManager: ObservableObject {
         maxAudioLevel = 0
         recordingStartTime = Date()
         hotkeyManager.isOperationActive = true
+        activity.hold()
 
         // Light audible cue so it's clear recording actually started.
         playCue()
 
-        showOverlay(status: "Recording...")
+        // Name the mode when it isn't the plain default, so a held right ⌥/⌘ visibly
+        // landed: the overlay says which language (or translation) this session is.
+        let status: String
+        if let plan = dualPlan {
+            let a = plan.fast.prefix(2).uppercased()
+            let b = plan.legacy.prefix(2).uppercased()
+            status = "Recording (Auto \(a)/\(b))..."
+        } else if sessionTranslate {
+            status = "Recording (→ \(settings.translationTargetLanguage.uppercased()))..."
+        } else if sessionLanguage != DictationLanguage.resolved(selectedLanguage) {
+            status = "Recording (\(DictationLanguage.displayName(for: sessionLanguage)))..."
+        } else {
+            status = "Recording..."
+        }
+        showOverlay(status: status)
         recordingPanel?.state.isRecording = true
         recordingPanel?.state.isTranscribing = false
         recordingPanel?.state.isLiveSession = usingLiveSession
@@ -561,7 +898,15 @@ class DictationManager: ObservableObject {
         // on a genuinely dead mic (wrong input device, muted, unplugged) — the threshold is far
         // below real speech.
         if maxAudioLevel < silenceLevelThreshold {
-            if usingFastSession {
+            if usingDualSession {
+                if #available(macOS 26.0, *) {
+                    let service = fastSpeech
+                    Task { await service.cancel() }
+                }
+                speechTranscriber.cancelLiveSession()
+                usingDualSession = false
+                dualPlan = nil
+            } else if usingFastSession {
                 if #available(macOS 26.0, *) {
                     let service = fastSpeech
                     Task { await service.cancel() }
@@ -582,6 +927,109 @@ class DictationManager: ObservableObject {
             hideOverlay()
             print("mywisper: Recording was silent (peak level \(maxAudioLevel)) — skipping transcription")
             showTransientStatus("No speech detected — check your microphone")
+            return
+        }
+
+        // Dual-language race: both sides transcribed WHILE the user spoke. Finalize them in
+        // parallel, pick the winner (confidence + word count), and hand its text — under its
+        // language — to the shared pipeline. The pick itself costs nothing.
+        if usingDualSession, let plan = dualPlan {
+            usingDualSession = false
+            dualPlan = nil
+            isRecording = false
+
+            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            if duration < AudioRecorder.minimumDuration {
+                if #available(macOS 26.0, *) {
+                    let service = fastSpeech
+                    Task { await service.cancel() }
+                }
+                speechTranscriber.cancelLiveSession()
+                isTranscribing = false
+                recordingPanel?.state.progress = nil
+                hideOverlay()
+                print("mywisper: Recording too short")
+                showTransientStatus("Recording too short")
+                return
+            }
+
+            isTranscribing = true
+            recordingPanel?.state.statusText = "Transcribing..."
+            recordingPanel?.state.isRecording = false
+            recordingPanel?.state.isTranscribing = true
+            recordingPanel?.state.progress = nil
+
+            let completionHandler = makeTranscriptionCompletionHandler()
+
+            // Join point for the two finalizations (both call back on main).
+            final class DualJoin {
+                var fastText: String?
+                var fastConfidence: Double?
+                var fastError: Error?
+                var fastDone = false
+                var legacy: (text: String, confidence: Double)?
+                var legacyDone = false
+            }
+            let join = DualJoin()
+            let resolve: () -> Void = { [weak self] in
+                guard let self, join.fastDone, join.legacyDone else { return }
+                let fastText = join.fastText ?? ""
+                let legacyText = join.legacy?.text ?? ""
+                let confidence = join.legacy?.confidence ?? 0
+                if fastText.isEmpty && legacyText.isEmpty {
+                    if let error = join.fastError {
+                        completionHandler(.failure(error))
+                    } else {
+                        completionHandler(.success(""))
+                    }
+                    return
+                }
+                let legacyWins = Self.dualLegacyWins(
+                    fastText: fastText, fastConfidence: join.fastConfidence,
+                    legacyText: legacyText, legacyConfidence: confidence
+                )
+                self.sessionLanguage = legacyWins ? plan.legacy : plan.fast
+                // NSLog → unified log, readable via `log show --process mywisper` even for
+                // Finder-launched builds; this is the tuning trace for the thresholds.
+                NSLog("mywisper dual race: fast(%@) conf=%.2f words=%d '%@' | legacy(%@) conf=%.2f words=%d '%@' -> winner %@",
+                      plan.fast, join.fastConfidence ?? -1, fastText.split(separator: " ").count, String(fastText.prefix(48)),
+                      plan.legacy, confidence, legacyText.split(separator: " ").count, String(legacyText.prefix(48)),
+                      self.sessionLanguage)
+                completionHandler(.success(legacyWins ? legacyText : fastText))
+            }
+
+            speechTranscriber.finishLiveSession { [weak self] result in
+                DispatchQueue.main.async {
+                    join.legacy = (
+                        text: (try? result.get()) ?? "",
+                        confidence: self?.speechTranscriber.lastLiveAverageConfidence ?? 0
+                    )
+                    join.legacyDone = true
+                    resolve()
+                }
+            }
+            if #available(macOS 26.0, *) {
+                let startTask = fastStartTask
+                let service = fastSpeech
+                Task {
+                    await startTask?.value
+                    do {
+                        let result = try await service.finish()
+                        DispatchQueue.main.async {
+                            join.fastText = result.text
+                            join.fastConfidence = result.confidence
+                            join.fastDone = true
+                            resolve()
+                        }
+                    } catch {
+                        DispatchQueue.main.async {
+                            join.fastError = error
+                            join.fastDone = true
+                            resolve()
+                        }
+                    }
+                }
+            }
             return
         }
 
@@ -620,8 +1068,8 @@ class DictationManager: ObservableObject {
                     // A very quick tap can stop before start finished attaching; wait it out.
                     await startTask?.value
                     do {
-                        let text = try await service.finish()
-                        completionHandler(.success(text))
+                        let result = try await service.finish()
+                        completionHandler(.success(result.text))
                     } catch {
                         completionHandler(.failure(error))
                     }
@@ -729,7 +1177,7 @@ class DictationManager: ObservableObject {
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
             guard let pending = pendingStore.enqueue(
                 audioFileURL: url,
-                language: selectedLanguage,
+                language: sessionLanguage,
                 prompt: settings.vocabularyPromptHint(),
                 duration: duration
             ) else {
@@ -804,8 +1252,16 @@ class DictationManager: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
+                // A second-language session borrowed the Whisper engine's language; hand it back.
+                if self.settings.engine == .whisper && self.sessionLanguage != self.selectedLanguage {
+                    self.whisperTranscriber.setLanguage(self.selectedLanguage)
+                }
+
                 // If the operation was cancelled, discard the result
-                guard !self.isCancelled else { return }
+                guard !self.isCancelled else {
+                    self.activity.release()
+                    return
+                }
 
                 switch result {
                 case .success(let transcribedText):
@@ -813,6 +1269,72 @@ class DictationManager: ObservableObject {
                     // etc.) that surface on near-silent/low-SNR audio — treat them as no speech so the
                     // empty-result path below shows a notice instead of pasting the bogus phrase.
                     let rawText = self.isLikelyHallucination(transcribedText) ? "" : transcribedText
+                    if self.sessionTranslate && !rawText.isEmpty {
+                        self.translateThenDeliver(rawText)
+                    } else {
+                        self.deliverTranscription(rawText)
+                    }
+                case .failure(let error):
+                    print("mywisper: Error: \(error)")
+                    self.isTranscribing = false
+                    self.hideOverlay()
+                    self.activity.release()
+                    self.surfaceTranscriptionError(error)
+                }
+            }
+        }
+    }
+
+    /// Translate the transcript before delivery (the right-⌘ session). On any failure the
+    /// user's words are NOT lost: the original goes to the clipboard and nothing is pasted.
+    private func translateThenDeliver(_ rawText: String) {
+        guard #available(macOS 26.0, *) else {
+            finishWithTranslationFailure(rawText, message: "Translation needs macOS 26 or newer")
+            return
+        }
+        let source = String(sessionLanguage.prefix(2)).lowercased()
+        guard sessionLanguage != DictationLanguage.autoCode else {
+            finishWithTranslationFailure(rawText, message: "Translation needs a specific language (not Auto)")
+            return
+        }
+        recordingPanel?.state.statusText = "Translating..."
+        recordingPanel?.state.isTranscribing = true
+        recordingPanel?.state.progress = nil
+
+        let pair = TranslationEngine.Pair(source: source, target: settings.translationTargetLanguage)
+        Task { [weak self] in
+            do {
+                let translated = try await TranslationEngine.shared.translate(rawText, pair: pair)
+                DispatchQueue.main.async {
+                    guard let self = self, !self.isCancelled else { return }
+                    self.deliverTranscription(translated, originalBeforeTranslation: rawText)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self = self, !self.isCancelled else { return }
+                    self.finishWithTranslationFailure(
+                        rawText,
+                        message: error.localizedDescription
+                    )
+                }
+            }
+        }
+    }
+
+    /// Translation failed: keep the words (clipboard), paste nothing, say why.
+    private func finishWithTranslationFailure(_ original: String, message: String) {
+        isTranscribing = false
+        hideOverlay()
+        activity.release()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(original, forType: .string)
+        playErrorCue()
+        showTransientStatus("Translation failed — original copied to clipboard (\(message))", duration: 5.0)
+    }
+
+    /// Shared delivery tail: AI post-processing, dictionary, history, paste, teardown.
+    /// `originalBeforeTranslation` preserves the pre-translation dictation for history.
+    private func deliverTranscription(_ rawText: String, originalBeforeTranslation: String? = nil) {
                     if !rawText.isEmpty && self.settings.aiProcessingEnabled && !self.settings.openAIKey.isEmpty {
                         // AI post-processing step
                         self.recordingPanel?.state.statusText = "AI Processing..."
@@ -853,15 +1375,16 @@ class DictationManager: ObservableObject {
                                 let recordingDuration = self.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
                                 let record = TranscriptionRecord(
                                     text: finalText,
-                                    rawText: rawText,
+                                    rawText: originalBeforeTranslation ?? rawText,
                                     engine: self.settings.engine.rawValue,
-                                    language: self.selectedLanguage,
+                                    language: self.sessionLanguage,
                                     durationSeconds: recordingDuration,
                                     aiProcessed: true,
                                     aiModel: self.settings.openAIModel
                                 )
                                 self.history.add(record)
                                 self.pasteAndNotify(finalText)
+                                self.activity.release()
                             }
                         }
                     } else {
@@ -875,9 +1398,9 @@ class DictationManager: ObservableObject {
                             let recordingDuration = self.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
                             let record = TranscriptionRecord(
                                 text: processedText,
-                                rawText: processedText != rawText ? rawText : nil,
+                                rawText: originalBeforeTranslation ?? (processedText != rawText ? rawText : nil),
                                 engine: self.settings.engine.rawValue,
-                                language: self.selectedLanguage,
+                                language: self.sessionLanguage,
                                 durationSeconds: recordingDuration
                             )
                             self.history.add(record)
@@ -886,15 +1409,8 @@ class DictationManager: ObservableObject {
                             // Empty result (e.g. silence) — tell the user instead of doing nothing.
                             self.showTransientStatus("No speech detected")
                         }
+                        self.activity.release()
                     }
-                case .failure(let error):
-                    print("mywisper: Error: \(error)")
-                    self.isTranscribing = false
-                    self.hideOverlay()
-                    self.surfaceTranscriptionError(error)
-                }
-            }
-        }
     }
 
     /// Public entry point for retrying a previously failed cloud transcription
@@ -908,6 +1424,11 @@ class DictationManager: ObservableObject {
         previousApp = NSWorkspace.shared.frontmostApplication
         recordingStartTime = Date().addingTimeInterval(-pending.durationSeconds)
         isCancelled = false
+        // A retry replays the pending recording's own session parameters, not whatever
+        // the last live session happened to be.
+        sessionLanguage = pending.language
+        sessionTranslate = false
+        activity.hold()
         currentPendingID = pending.id
         isTranscribing = true
         currentTranscription = ""
@@ -1091,10 +1612,32 @@ class DictationManager: ObservableObject {
     private func hideOverlay() {
         recordingPanel?.hide()
         hotkeyManager.isOperationActive = false
+        // Every session-terminal path funnels through here (delivery, cancel, errors,
+        // silence, too-short) and it never runs mid-session — the safe single place to
+        // let macOS nap the process again.
+        activity.release()
+    }
+
+    /// Prewarm the Apple Translation session for the configured pair so the first
+    /// right-⌘ dictation translates warm (~300 ms) instead of cold (~1 s).
+    private func prewarmTranslationIfNeeded(target: String? = nil) {
+        let targetCode = target ?? settings.translationTargetLanguage
+        guard !targetCode.isEmpty else { return }
+        if #available(macOS 26.0, *) {
+            let source = String(DictationLanguage.resolved(selectedLanguage).prefix(2)).lowercased()
+            guard source != "au" else { return }  // "auto" has no concrete source language
+            let pair = TranslationEngine.Pair(source: source, target: targetCode)
+            Task {
+                await TranslationEngine.shared.retainOnly(pair)
+                await TranslationEngine.shared.prewarm(pair)
+            }
+        }
     }
 
     private func applyHotkeySettings() {
         hotkeyManager.useCustomHotkey = settings.useCustomHotkey
+        hotkeyManager.secondaryTriggerEnabled = !settings.secondLanguage.isEmpty
+        hotkeyManager.translateTriggerEnabled = settings.translationActive
         hotkeyManager.customHotkeyKeyCode = settings.customHotkeyKeyCode
         hotkeyManager.customHotkeyModifiers = settings.customHotkeyModifiers
         hotkeyManager.doubleTapInterval = settings.hotkeyDoubleTapInterval

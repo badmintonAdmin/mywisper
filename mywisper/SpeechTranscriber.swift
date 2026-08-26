@@ -98,7 +98,7 @@ class SpeechTranscriber {
         // exactly once, when the recognizer signals it has finished the whole file. A delegate is
         // used because only the delegate exposes that terminal "finished successfully" callback;
         // the resultHandler API gives no clean end-of-file signal.
-        let delegate = SegmentAccumulatingDelegate { [weak self] result in
+        let delegate = SegmentAccumulatingDelegate { [weak self] result, _ in
             // Recognition is over (success or failure) — drop our strong references so the task
             // and delegate can deallocate.
             self?.activeTask = nil
@@ -111,7 +111,45 @@ class SpeechTranscriber {
 
     // MARK: - Live (streaming) session
 
-    var liveSessionActive: Bool { liveEngine != nil }
+    private var liveActive = false
+    var liveSessionActive: Bool { liveActive }
+
+    /// Average segment confidence (0…1) of the last finished live session — the dual
+    /// language race's main signal: the recognizer fed the wrong language scores low.
+    private(set) var lastLiveAverageConfidence: Double = 0
+
+    /// Start live recognition WITHOUT owning the microphone: buffers arrive from outside
+    /// via `appendLiveBuffer` (the dual-language race taps the mic once and fans out).
+    func startLiveSessionFeed(
+        onPartial: ((String) -> Void)? = nil,
+        onFailure: @escaping (String) -> Void
+    ) throws {
+        guard let recognizer = recognizer, recognizer.isAvailable else {
+            throw TranscriberError.recognizerUnavailable
+        }
+        guard !liveActive else { return }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+
+        let delegate = SegmentAccumulatingDelegate(onPartial: onPartial) { [weak self] result, confidence in
+            self?.lastLiveAverageConfidence = confidence
+            self?.liveRecognitionCompleted(with: result)
+        }
+
+        liveRequest = request
+        liveDelegate = delegate
+        liveOnFailure = onFailure
+        liveFinishCompletion = nil
+        liveActive = true
+        liveTask = recognizer.recognitionTask(with: request, delegate: delegate)
+    }
+
+    /// Feed one microphone buffer into a feed-mode live session (audio thread).
+    func appendLiveBuffer(_ buffer: AVAudioPCMBuffer) {
+        liveRequest?.append(buffer)
+    }
 
     /// Start streaming microphone audio into the recognizer. Partial recognition runs while the
     /// user speaks; `finishLiveSession` then only finalizes the tail, so the result is
@@ -141,7 +179,8 @@ class SpeechTranscriber {
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
 
-        let delegate = SegmentAccumulatingDelegate(onPartial: onPartial) { [weak self] result in
+        let delegate = SegmentAccumulatingDelegate(onPartial: onPartial) { [weak self] result, confidence in
+            self?.lastLiveAverageConfidence = confidence
             self?.liveRecognitionCompleted(with: result)
         }
 
@@ -171,13 +210,14 @@ class SpeechTranscriber {
         liveDelegate = delegate
         liveOnFailure = onFailure
         liveFinishCompletion = nil
+        liveActive = true
         liveTask = recognizer.recognitionTask(with: request, delegate: delegate)
     }
 
     /// Stop capturing and finalize. The recognizer already processed the audio while the user
     /// spoke, so the delegate's terminal callback lands within a fraction of a second.
     func finishLiveSession(completion: @escaping (Result<String, Error>) -> Void) {
-        guard liveEngine != nil else {
+        guard liveActive else {
             completion(.failure(TranscriberError.recognizerUnavailable))
             return
         }
@@ -188,7 +228,8 @@ class SpeechTranscriber {
 
     /// Abort the live session, discarding all audio and text.
     func cancelLiveSession() {
-        guard liveEngine != nil else { return }
+        guard liveActive else { return }
+        liveActive = false
         liveFinishCompletion = nil
         liveOnFailure = nil
         stopLiveAudio()
@@ -200,6 +241,7 @@ class SpeechTranscriber {
 
     /// Terminal delegate callback for the live session (may arrive on any queue).
     private func liveRecognitionCompleted(with result: Result<String, Error>) {
+        liveActive = false
         let completion = liveFinishCompletion
         let failure = liveOnFailure
         liveFinishCompletion = nil
@@ -252,14 +294,21 @@ class SpeechTranscriber {
 private final class SegmentAccumulatingDelegate: NSObject, SFSpeechRecognitionTaskDelegate {
     private var segments: [String] = []
     private var didComplete = false
-    private let completion: (Result<String, Error>) -> Void
+    /// Per-word confidences across every finalized segment; their average is the
+    /// dual-language race's score for this recognizer.
+    private var confidences: [Double] = []
+    private let completion: (Result<String, Error>, Double) -> Void
     /// Live-draft feed: finalized segments plus the current in-progress hypothesis.
     /// nil for file-based transcription, where nobody watches partials.
     private let onPartial: ((String) -> Void)?
 
-    init(onPartial: ((String) -> Void)? = nil, completion: @escaping (Result<String, Error>) -> Void) {
+    init(onPartial: ((String) -> Void)? = nil, completion: @escaping (Result<String, Error>, Double) -> Void) {
         self.onPartial = onPartial
         self.completion = completion
+    }
+
+    private var averageConfidence: Double {
+        confidences.isEmpty ? 0 : confidences.reduce(0, +) / Double(confidences.count)
     }
 
     /// Streaming hypothesis for the CURRENT segment (cumulative within it, replaced on the
@@ -281,11 +330,13 @@ private final class SegmentAccumulatingDelegate: NSObject, SFSpeechRecognitionTa
         _ task: SFSpeechRecognitionTask,
         didFinishRecognition recognitionResult: SFSpeechRecognitionResult
     ) {
-        let text = recognitionResult.bestTranscription.formattedString
+        let transcription = recognitionResult.bestTranscription
+        let text = transcription.formattedString
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         if text == segments.last { return }
         segments.append(text)
+        confidences.append(contentsOf: transcription.segments.map { Double($0.confidence) })
     }
 
     /// Terminal callback: the recognizer has finished the entire file (or failed/cancelled).
@@ -299,11 +350,11 @@ private final class SegmentAccumulatingDelegate: NSObject, SFSpeechRecognitionTa
         if successfully || !combined.isEmpty {
             // Succeeded — or it ended with an error but we still captured usable text; return what
             // we have rather than discarding the user's words.
-            completion(.success(combined))
+            completion(.success(combined), averageConfidence)
         } else if let error = task.error {
-            completion(.failure(error))
+            completion(.failure(error), 0)
         } else {
-            completion(.failure(TranscriberError.recognizerUnavailable))
+            completion(.failure(TranscriberError.recognizerUnavailable), 0)
         }
     }
 }

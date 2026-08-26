@@ -239,6 +239,17 @@ struct SettingsView: View {
 
     // MARK: - General Tab
 
+    /// Translate-as-you-dictate (Apple Translation, on-device). Hidden entirely on
+    /// macOS < 15, where the framework doesn't exist.
+    @ViewBuilder
+    private var translationSection: some View {
+        if #available(macOS 26.0, *) {
+            SectionCard(title: "Translate As You Dictate", icon: "character.bubble", subtitle: "Hold right ⌘ — speak your language, the translation is pasted") {
+                TranslationSettingsContent()
+            }
+        }
+    }
+
     private var generalTab: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -261,7 +272,7 @@ struct SettingsView: View {
                             Image(systemName: "bolt.fill")
                                 .foregroundColor(.yellow)
                                 .font(.system(size: 12))
-                            Text("Transcribes on-device while you speak — the text is ready the moment you stop. English, German, Spanish, French, Italian, Japanese, Korean, Portuguese and Chinese use Apple's newest engine; other languages (including Русский) stream through the classic Apple engine — still instant.")
+                            Text("Transcribes on-device while you speak — the text is ready the moment you stop. English, German, Spanish, French, Italian, Japanese, Korean, Portuguese and Chinese use Apple's newest engine; other languages (including Русский) stream through the classic Apple engine — still instant. With language set to Auto, BOTH your languages are recognized in parallel and the better result wins — speak either, no switching.")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -331,7 +342,37 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
+
+                    Divider().padding(.vertical, 4)
+
+                    // Second language: its own trigger, nothing to switch in between.
+                    HStack(spacing: 8) {
+                        Text("Second language")
+                            .font(.system(size: 12))
+                        Picker("Second language", selection: $settings.secondLanguage) {
+                            Text("Off").tag("")
+                            ForEach(DictationLanguage.all.filter { !$0.isAuto && !$0.isSystem && $0.code != settings.selectedLanguage }) { lang in
+                                Text(lang.displayName).tag(lang.code)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(maxWidth: 180)
+                    }
+                    if !settings.secondLanguage.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "option")
+                                .font(.system(size: 11))
+                                .foregroundColor(.accentColor)
+                            Text("Hold **right ⌥** to dictate in \(DictationLanguage.displayName(for: settings.secondLanguage)) — both languages stay ready, nothing to switch.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
+
+                translationSection
 
                 SectionCard(title: "Microphone", icon: "mic", subtitle: "Audio input device for recording") {
                     HStack(spacing: 8) {
@@ -1487,6 +1528,21 @@ struct SettingsView: View {
                         Text("Use any key with at least one modifier (⌃ ⌥ ⇧ ⌘)")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
+
+                        Divider().padding(.vertical, 4)
+
+                        Toggle(isOn: $settings.pushToTalkEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Push-to-talk")
+                                    .font(.system(size: 12))
+                                Text("Hold the hotkey to dictate, release to paste. A quick tap still starts a hands-free session — tap again to finish.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
                     }
                 }
                 .background(
@@ -1985,5 +2041,118 @@ class CancelHotkeyRecorderNSView: NSView {
 
     deinit {
         stopMonitoring()
+    }
+}
+
+// MARK: - Translation settings content (macOS 15+)
+
+/// The Translate As You Dictate controls: target pick, live availability of the
+/// language-pair model, and the download flow. Downloads MUST run from a window
+/// (Apple's `.translationTask` is the only installing API), which is exactly why
+/// this lives in Settings — the hidden zero-size host presents Apple's sheet.
+@available(macOS 26.0, *)
+private struct TranslationSettingsContent: View {
+    @ObservedObject private var settings = SettingsManager.shared
+    @State private var availability: TranslationEngine.Availability?
+    @State private var downloadPair: TranslationEngine.Pair?
+    @State private var refreshTick = 0
+
+    private var sourceISO: String {
+        String(DictationLanguage.resolved(settings.selectedLanguage).prefix(2)).lowercased()
+    }
+
+    private var currentPair: TranslationEngine.Pair? {
+        guard !settings.translationTargetLanguage.isEmpty,
+              settings.selectedLanguage != DictationLanguage.autoCode else { return nil }
+        return TranslationEngine.Pair(source: sourceISO, target: settings.translationTargetLanguage)
+    }
+
+    /// Curated target list (Apple Translation's common set); the source is never offered.
+    private static let targets: [(code: String, name: String)] = [
+        ("en", "English"), ("ru", "Русский"), ("uk", "Українська"), ("es", "Español"),
+        ("fr", "Français"), ("de", "Deutsch"), ("it", "Italiano"), ("pt", "Português"),
+        ("nl", "Nederlands"), ("pl", "Polski"), ("zh", "中文"), ("ja", "日本語"),
+        ("ko", "한국어"), ("ar", "العربية"), ("hi", "हिन्दी"), ("tr", "Türkçe"),
+        ("id", "Bahasa Indonesia"), ("vi", "Tiếng Việt"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Translate to")
+                    .font(.system(size: 12))
+                Picker("Translate to", selection: $settings.translationTargetLanguage) {
+                    Text("Off").tag("")
+                    ForEach(Self.targets.filter { $0.code != sourceISO }, id: \.code) { target in
+                        Text(target.name).tag(target.code)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: 200)
+            }
+
+            if !settings.translationTargetLanguage.isEmpty {
+                if settings.selectedLanguage == DictationLanguage.autoCode {
+                    statusRow(icon: "exclamationmark.triangle.fill", color: .orange,
+                              text: "Translation needs a specific recognition language — pick one instead of Auto.")
+                } else {
+                    switch availability {
+                    case .installed:
+                        statusRow(icon: "checkmark.circle.fill", color: .green,
+                                  text: "Model installed. Hold right ⌘, dictate — the \(Self.targets.first(where: { $0.code == settings.translationTargetLanguage })?.name ?? settings.translationTargetLanguage) translation is pasted. On failure your words go to the clipboard.")
+                    case .downloadable:
+                        HStack(spacing: 8) {
+                            statusRow(icon: "arrow.down.circle", color: .orange,
+                                      text: "Translation model not downloaded yet.")
+                            Button("Download…") {
+                                downloadPair = currentPair
+                            }
+                            .controlSize(.small)
+                            Button {
+                                refreshTick += 1
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .controlSize(.small)
+                            .help("Check again after the download finishes")
+                        }
+                    case .unsupported:
+                        statusRow(icon: "xmark.circle.fill", color: .red,
+                                  text: "Apple Translation doesn't support this language pair.")
+                    case nil:
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking model availability…")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+
+            // Zero-size host that presents Apple's download sheet when a pair is set.
+            TranslationDownloadTaskView(pair: downloadPair)
+        }
+        .task(id: "\(settings.selectedLanguage)|\(settings.translationTargetLanguage)|\(refreshTick)") {
+            guard let pair = currentPair else {
+                availability = nil
+                return
+            }
+            availability = nil
+            availability = await TranslationEngine.shared.availability(of: pair)
+        }
+    }
+
+    private func statusRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.system(size: 12))
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

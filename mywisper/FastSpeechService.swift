@@ -57,6 +57,15 @@ actor FastSpeechService {
         }
     }
 
+    /// A finished session's transcript plus its average per-word confidence (0…1), or nil
+    /// when the API reported none. The dual-language race compares this against the other
+    /// recognizer's score — a transcriber fed the wrong language scores dramatically lower
+    /// (measured here: right language ≈ 0.9+, wrong language ≈ 0.05–0.3).
+    struct FastResult: Sendable {
+        let text: String
+        let confidence: Double?
+    }
+
     private struct PreparedSession {
         let locale: Locale
         let transcriber: Speech.SpeechTranscriber
@@ -69,20 +78,22 @@ actor FastSpeechService {
         let prepared: PreparedSession
         let input: FastMicrophoneInput
         let continuation: AsyncStream<AnalyzerInput>.Continuation
-        let resultTask: Task<String, any Error>
+        let resultTask: Task<FastResult, any Error>
     }
 
-    /// The one warm session (this app dictates in a single language at a time). Keyed by the
-    /// caller's language code, not the resolved locale, so lookups stay trivial.
-    private var prepared: PreparedSession?
-    private var preparedFor: String?
-    /// Build in flight. The actor is reentrant at suspension points: without this, a prewarm
-    /// racing a hotkey press would start two rival model installs for the same language.
-    private var buildTask: Task<PreparedSession, any Error>?
-    private var buildFor: String?
+    /// Warm sessions keyed by the caller's language code. Two slots: the primary dictation
+    /// language and the second-language trigger's — a second language is only worth having
+    /// if it answers as fast as the first, which means keeping BOTH analyzers prepared.
+    private var prepared: [String: PreparedSession] = [:]
+    /// Insertion order of `prepared`, oldest first, for eviction at the cap.
+    private var warmOrder: [String] = []
+    private static let warmCap = 2
+    /// Builds in flight, one per language. The actor is reentrant at suspension points:
+    /// without this, a prewarm racing a hotkey press would start two rival model installs.
+    private var buildTasks: [String: Task<PreparedSession, any Error>] = [:]
     private var active: ActiveSession?
-    /// We hold at most one AssetInventory reservation (the current language).
-    private var reservedLocale: Locale?
+    /// AssetInventory reservations we hold, oldest first (the system caps how many).
+    private var reservedLocales: [Locale] = []
 
     /// Language codes the new API actually supports on this machine, normalized to the app's
     /// "en-us" style. Empty when the API is unavailable.
@@ -103,20 +114,23 @@ actor FastSpeechService {
     /// `onLevel` receives a normalized 0…1 mic level per tap buffer (audio thread).
     /// `onUpdate` receives the live draft (finalized + volatile tail) as it grows.
     /// `onFailure` fires once if capture/analysis dies mid-session.
+    /// `onRawBuffer` receives every UNCONVERTED microphone buffer (audio thread) — the
+    /// dual-language race fans the same capture out to a second recognizer through it.
     func start(
         languageCode: String,
         onLevel: (@Sendable (Float) -> Void)?,
         onUpdate: (@Sendable (String) -> Void)? = nil,
+        onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil,
         onFailure: @escaping @Sendable (String) -> Void
     ) async throws {
         guard active == nil else { throw FastSpeechError.sessionAlreadyActive }
 
         try await ensureWarm(code: languageCode)
-        guard let session = prepared, preparedFor == languageCode else {
+        guard let session = prepared[languageCode] else {
             throw FastSpeechError.unavailable
         }
-        prepared = nil
-        preparedFor = nil
+        prepared[languageCode] = nil
+        warmOrder.removeAll { $0 == languageCode }
 
         let (stream, continuation) = AsyncStream.makeStream(
             of: AnalyzerInput.self,
@@ -124,25 +138,35 @@ actor FastSpeechService {
         )
 
         let transcriber = session.transcriber
-        let resultTask = Task { () throws -> String in
+        let resultTask = Task { () throws -> FastResult in
             var finalized = ""
             var volatileTail = ""
+            var confidences: [Double] = []
             for try await result in transcriber.results {
                 let text = String(result.text.characters)
                 if result.isFinal {
                     finalized += text
                     volatileTail = ""
+                    for run in result.text.runs {
+                        if let confidence = run.transcriptionConfidence {
+                            confidences.append(confidence)
+                        }
+                    }
                 } else {
                     volatileTail = text
                 }
                 onUpdate?(finalized + volatileTail)
             }
-            return finalized + volatileTail
+            let average = confidences.isEmpty
+                ? nil
+                : confidences.reduce(0, +) / Double(confidences.count)
+            return FastResult(text: finalized + volatileTail, confidence: average)
         }
 
         let input = FastMicrophoneInput(
             continuation: continuation,
             onLevel: onLevel,
+            onRawBuffer: onRawBuffer,
             onFailure: onFailure
         )
 
@@ -170,9 +194,10 @@ actor FastSpeechService {
         }
     }
 
-    /// Stop capture, finalize whatever tail hasn't been transcribed yet, and return the text.
-    /// Near-instant: the bulk of the audio was analyzed while the user was still speaking.
-    func finish() async throws -> String {
+    /// Stop capture, finalize whatever tail hasn't been transcribed yet, and return the text
+    /// with its confidence. Near-instant: the bulk of the audio was analyzed while the user
+    /// was still speaking.
+    func finish() async throws -> FastResult {
         guard let session = active else { throw FastSpeechError.noActiveSession }
         active = nil
 
@@ -181,9 +206,9 @@ actor FastSpeechService {
 
         do {
             try await session.prepared.analyzer.finalizeAndFinishThroughEndOfInput()
-            let text = try await session.resultTask.value
+            let result = try await session.resultTask.value
             reprewarm(session.languageCode)
-            return text
+            return result
         } catch {
             session.resultTask.cancel()
             reprewarm(session.languageCode)
@@ -206,39 +231,39 @@ actor FastSpeechService {
     // MARK: - Warm session lifecycle
 
     private func ensureWarm(code: String) async throws {
-        if preparedFor == code, prepared != nil { return }
+        if prepared[code] != nil { return }
 
         let task: Task<PreparedSession, any Error>
-        if buildFor == code, let existing = buildTask {
+        if let existing = buildTasks[code] {
             task = existing
         } else {
-            // A build for a different language is stale (language switched mid-download).
-            buildTask?.cancel()
             let newTask = Task { try await self.makePreparedSession(code: code) }
-            buildTask = newTask
-            buildFor = code
+            buildTasks[code] = newTask
             task = newTask
         }
 
         do {
             let session = try await task.value
-            // Every awaiter caches (continuations resume in unspecified order); only the
-            // still-relevant language wins the slot.
-            if preparedFor != code || prepared == nil {
-                prepared = session
-                preparedFor = code
+            // Every awaiter caches (continuations resume in unspecified order).
+            if prepared[code] == nil {
+                prepared[code] = session
+                warmOrder.append(code)
+                // Cap the warm set: evict the oldest OTHER language.
+                while warmOrder.count > Self.warmCap {
+                    let evicted = warmOrder.removeFirst()
+                    prepared[evicted] = nil
+                }
             }
-            clearBuild(task)
+            clearBuild(task, for: code)
         } catch {
-            clearBuild(task)
+            clearBuild(task, for: code)
             throw error
         }
     }
 
-    private func clearBuild(_ task: Task<PreparedSession, any Error>) {
-        if buildTask == task {
-            buildTask = nil
-            buildFor = nil
+    private func clearBuild(_ task: Task<PreparedSession, any Error>, for code: String) {
+        if buildTasks[code] == task {
+            buildTasks[code] = nil
         }
     }
 
@@ -264,7 +289,8 @@ actor FastSpeechService {
             // volatile + fast: stream a live draft while the user speaks instead of waiting
             // for pauses — this is what makes finalization at stop effectively free.
             reportingOptions: [.volatileResults, .fastResults],
-            attributeOptions: []
+            // Per-word confidence feeds the dual-language race's winner pick.
+            attributeOptions: [.transcriptionConfidence]
         )
 
         // Only a missing language model makes this slow; it downloads once per language.
@@ -293,16 +319,19 @@ actor FastSpeechService {
         )
     }
 
-    /// Keep exactly one locale reserved with AssetInventory (the reservation keeps the model
-    /// installed). Failure is non-fatal — the asset may already be present system-wide.
+    /// Keep the warm languages reserved with AssetInventory (the reservation keeps the model
+    /// installed). The system caps how many an app may hold — and it can be as low as 1 —
+    /// so the oldest is released when a new one would exceed it. Failure is non-fatal: the
+    /// asset may already be present system-wide.
     private func reserve(locale: Locale) async {
-        if reservedLocale?.identifier == locale.identifier { return }
-        if let old = reservedLocale {
-            await AssetInventory.release(reservedLocale: old)
-            reservedLocale = nil
+        if reservedLocales.contains(where: { $0.identifier == locale.identifier }) { return }
+        let cap = max(1, AssetInventory.maximumReservedLocales)
+        while reservedLocales.count >= cap {
+            let oldest = reservedLocales.removeFirst()
+            await AssetInventory.release(reservedLocale: oldest)
         }
         _ = try? await AssetInventory.reserve(locale: locale)
-        reservedLocale = locale
+        reservedLocales.append(locale)
     }
 
     private func reprewarm(_ code: String) {
@@ -323,6 +352,7 @@ private final class FastMicrophoneInput: @unchecked Sendable {
     private let audioEngine = AVAudioEngine()
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
     private let onLevel: (@Sendable (Float) -> Void)?
+    private let onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private let onFailure: @Sendable (String) -> Void
     private let stateLock = NSLock()
     private var running = false
@@ -354,10 +384,12 @@ private final class FastMicrophoneInput: @unchecked Sendable {
     init(
         continuation: AsyncStream<AnalyzerInput>.Continuation,
         onLevel: (@Sendable (Float) -> Void)?,
+        onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil,
         onFailure: @escaping @Sendable (String) -> Void
     ) {
         self.continuation = continuation
         self.onLevel = onLevel
+        self.onRawBuffer = onRawBuffer
         self.onFailure = onFailure
     }
 
@@ -431,6 +463,7 @@ private final class FastMicrophoneInput: @unchecked Sendable {
 
     private func receive(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, outputFormat: AVAudioFormat) {
         publishLevel(of: buffer)
+        onRawBuffer?(buffer)
 
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 1

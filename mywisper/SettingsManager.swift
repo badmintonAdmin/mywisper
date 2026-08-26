@@ -55,8 +55,45 @@ struct DictationLanguage: Identifiable, Equatable {
 
     /// True for the special "detect language automatically" option.
     var isAuto: Bool { code == DictationLanguage.autoCode }
+    /// True for the "follow the system language" option.
+    var isSystem: Bool { code == DictationLanguage.systemCode }
 
     static let autoCode = "auto"
+    static let systemCode = "system"
+
+    /// The concrete language "System" resolves to: the user's first preferred language
+    /// matched against our list, falling back to English.
+    ///
+    /// `Locale.preferredLanguages`, NOT `Locale.current`: for an app with no matching
+    /// localization (ours ships English-only) `Locale.current`'s language collapses to the
+    /// app's localization — it reported "en" on a Russian-language Mac, which sent Russian
+    /// speech into the English recognizer.
+    static func resolvedSystemCode() -> String {
+        preferredCodes().first ?? "en-US"
+    }
+
+    /// Our language codes for the user's preferred languages, in their order, deduped —
+    /// e.g. ["en-RU", "ru-RU"] system prefs → ["en-US", "ru-RU"]. The Auto race derives
+    /// its pair from this list, so a bilingual Mac races its own two languages out of
+    /// the box.
+    static func preferredCodes() -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for preferred in Locale.preferredLanguages {
+            let lang = String(preferred.prefix(2)).lowercased()
+            if let match = all.first(where: { $0.code.lowercased().hasPrefix(lang + "-") }),
+               seen.insert(match.code).inserted {
+                out.append(match.code)
+            }
+        }
+        return out
+    }
+
+    /// Maps the sentinel "system" to its concrete language; every other code (including
+    /// "auto") passes through. Engines never see "system".
+    static func resolved(_ code: String) -> String {
+        code == systemCode ? resolvedSystemCode() : code
+    }
 
     /// ISO-639-1 code passed to Whisper / OpenAI (first 2 chars of the locale), or "auto".
     var isoCode: String {
@@ -67,6 +104,7 @@ struct DictationLanguage: Identifiable, Equatable {
     /// engines and both UIs stay in sync.
     static let all: [DictationLanguage] = [
         DictationLanguage(code: autoCode, displayName: "Auto (detect)"),
+        DictationLanguage(code: systemCode, displayName: "System language"),
         DictationLanguage(code: "en-US", displayName: "English"),
         DictationLanguage(code: "ru-RU", displayName: "Русский"),
         DictationLanguage(code: "es-ES", displayName: "Español"),
@@ -218,6 +256,32 @@ class SettingsManager: ObservableObject {
 
     @Published var selectedLanguage: String {
         didSet { UserDefaults.standard.set(selectedLanguage, forKey: "selectedLanguage") }
+    }
+
+    /// Push-to-talk: holding the recording hotkey dictates for as long as it's held and
+    /// pastes on release; a quick tap still starts a hands-free session (tap again to stop).
+    @Published var pushToTalkEnabled: Bool {
+        didSet { UserDefaults.standard.set(pushToTalkEnabled, forKey: "pushToTalkEnabled") }
+    }
+
+    /// Second dictation language ("" = off). Gets its own trigger — hold right ⌥ — so
+    /// switching languages needs no settings change (both engines stay prewarmed).
+    @Published var secondLanguage: String {
+        didSet { UserDefaults.standard.set(secondLanguage, forKey: "secondLanguage") }
+    }
+
+    /// Translate-as-you-dictate target (ISO code like "es"; "" = off). Hold right ⌘,
+    /// speak in the primary language, the translation is pasted. Needs macOS 15+.
+    @Published var translationTargetLanguage: String {
+        didSet { UserDefaults.standard.set(translationTargetLanguage, forKey: "translationTargetLanguage") }
+    }
+
+    /// Whether the translate trigger should be armed on this system.
+    var translationActive: Bool {
+        if #available(macOS 26.0, *) {
+            return !translationTargetLanguage.isEmpty
+        }
+        return false
     }
 
     /// Unique ID of the preferred audio input device, or "" to use the system default.
@@ -449,6 +513,12 @@ class SettingsManager: ObservableObject {
             : UserDefaults.standard.bool(forKey: "islandShowRecordingDot")
         self.whisperModelPath = UserDefaults.standard.string(forKey: "whisperModelPath") ?? ""
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
+
+        self.pushToTalkEnabled = UserDefaults.standard.object(forKey: "pushToTalkEnabled") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "pushToTalkEnabled")
+        self.secondLanguage = UserDefaults.standard.string(forKey: "secondLanguage") ?? ""
+        self.translationTargetLanguage = UserDefaults.standard.string(forKey: "translationTargetLanguage") ?? ""
         self.selectedInputDeviceID = UserDefaults.standard.string(forKey: "selectedInputDeviceID") ?? ""
 
         // Live transcription: default ON so long dictations feel fast out of the box.
