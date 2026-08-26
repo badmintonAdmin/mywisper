@@ -767,8 +767,13 @@ class DictationManager: ObservableObject {
         let primary = preferred.first ?? "en-US"
         var other: String?
         if !settings.secondLanguage.isEmpty {
-            other = DictationLanguage.resolved(settings.secondLanguage)
-        } else {
+            let second = DictationLanguage.resolved(settings.secondLanguage)
+            if second != primary { other = second }
+        }
+        // The explicit second language can collapse into the primary after a system-language
+        // switch (second = Русский, system becomes Russian) — fall through to the preferred
+        // list so Auto keeps racing instead of silently going single-language.
+        if other == nil {
             other = preferred.dropFirst().first(where: { $0 != primary })
             if other == nil && primary != "en-US" { other = "en-US" }
         }

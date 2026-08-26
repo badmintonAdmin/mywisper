@@ -27,6 +27,11 @@ class SpeechTranscriber {
     // cover (Russian!): audio streams into SFSpeechRecognizer WHILE the user speaks, so the
     // result at stop is near-instant, versus the classic record-file-then-transcribe path.
     private var liveEngine: AVAudioEngine?
+    /// ONE engine for every live session, created once and reused. Building a fresh
+    /// AVAudioEngine per session churns CoreAudio audio units and crashes SIGILL inside
+    /// AudioConverterNew (caulk allocator) after a burst of quick sessions — observed in
+    /// the field with sessions 5–10 s apart.
+    private let liveAudioEngine = AVAudioEngine()
     private var liveRequest: SFSpeechAudioBufferRecognitionRequest?
     private var liveTask: SFSpeechRecognitionTask?
     private var liveDelegate: SegmentAccumulatingDelegate?
@@ -184,7 +189,7 @@ class SpeechTranscriber {
 
         applyLiveSelectedInputDevice()
 
-        let engine = AVAudioEngine()
+        let engine = liveAudioEngine
         let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else {

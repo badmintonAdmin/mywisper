@@ -389,7 +389,11 @@ actor FastSpeechService {
 /// input (AVAudioEngine's inputNode follows the system default), restored on stop.
 @available(macOS 26.0, *)
 private final class FastMicrophoneInput: @unchecked Sendable {
-    private let audioEngine = AVAudioEngine()
+    /// ONE engine for the process, shared across sessions (only one fast session runs at a
+    /// time). A fresh AVAudioEngine per session churns CoreAudio audio units and crashes
+    /// SIGILL inside AudioConverterNew after bursts of quick dictations.
+    private static let sharedEngine = AVAudioEngine()
+    private var audioEngine: AVAudioEngine { Self.sharedEngine }
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
     private let onLevel: (@Sendable (Float) -> Void)?
     private let onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
