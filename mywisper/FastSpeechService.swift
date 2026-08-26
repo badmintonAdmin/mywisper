@@ -74,6 +74,9 @@ actor FastSpeechService {
     }
 
     private struct ActiveSession {
+        /// Monotonic token identifying THIS session; a stale early-kill Task presents it
+        /// back and is refused if a different session is active by then.
+        let generation: Int
         let languageCode: String
         let prepared: PreparedSession
         let input: FastMicrophoneInput
@@ -92,6 +95,10 @@ actor FastSpeechService {
     /// without this, a prewarm racing a hotkey press would start two rival model installs.
     private var buildTasks: [String: Task<PreparedSession, any Error>] = [:]
     private var active: ActiveSession?
+    private var generation = 0
+    /// True after `abandonAnalysis()`: the analyzer is dead but the microphone keeps
+    /// capturing (the dual race's other recognizer still feeds off the raw-buffer fan-out).
+    private var activeAbandoned = false
     /// AssetInventory reservations we hold, oldest first (the system caps how many).
     private var reservedLocales: [Locale] = []
 
@@ -116,13 +123,15 @@ actor FastSpeechService {
     /// `onFailure` fires once if capture/analysis dies mid-session.
     /// `onRawBuffer` receives every UNCONVERTED microphone buffer (audio thread) — the
     /// dual-language race fans the same capture out to a second recognizer through it.
+    /// Returns this session's generation token for `abandonAnalysis(generation:)`.
+    @discardableResult
     func start(
         languageCode: String,
         onLevel: (@Sendable (Float) -> Void)?,
         onUpdate: (@Sendable (String) -> Void)? = nil,
         onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil,
         onFailure: @escaping @Sendable (String) -> Void
-    ) async throws {
+    ) async throws -> Int {
         guard active == nil else { throw FastSpeechError.sessionAlreadyActive }
 
         try await ensureWarm(code: languageCode)
@@ -170,7 +179,9 @@ actor FastSpeechService {
             onFailure: onFailure
         )
 
+        generation += 1
         active = ActiveSession(
+            generation: generation,
             languageCode: languageCode,
             prepared: session,
             input: input,
@@ -192,6 +203,24 @@ actor FastSpeechService {
             reprewarm(languageCode)
             throw error
         }
+        return generation
+    }
+
+    /// Dual-race early kill: this side lost — stop transcribing to save the battery, but
+    /// KEEP capturing, because the raw-buffer fan-out is the other recognizer's microphone.
+    /// `finish()`/`cancel()` still stop the capture and clean up.
+    ///
+    /// `generation` names the exact session the caller means to kill: the kill timer's
+    /// detached Task can land on the actor after that session already finished and a new
+    /// one (even same-language) started — the token makes killing the wrong session
+    /// impossible.
+    func abandonAnalysis(generation: Int) async {
+        guard let session = active, session.generation == generation, !activeAbandoned else { return }
+        activeAbandoned = true
+        session.input.stopConverting()
+        session.continuation.finish()
+        await session.prepared.analyzer.cancelAndFinishNow()
+        session.resultTask.cancel()
     }
 
     /// Stop capture, finalize whatever tail hasn't been transcribed yet, and return the text
@@ -200,6 +229,14 @@ actor FastSpeechService {
     func finish() async throws -> FastResult {
         guard let session = active else { throw FastSpeechError.noActiveSession }
         active = nil
+
+        if activeAbandoned {
+            // Analysis was killed mid-race; only the microphone was still ours to stop.
+            activeAbandoned = false
+            session.input.stop()
+            reprewarm(session.languageCode)
+            return FastResult(text: "", confidence: nil)
+        }
 
         session.input.stop()
         session.continuation.finish()
@@ -223,7 +260,10 @@ actor FastSpeechService {
 
         session.input.stop()
         session.continuation.finish()
-        await session.prepared.analyzer.cancelAndFinishNow()
+        if !activeAbandoned {
+            await session.prepared.analyzer.cancelAndFinishNow()
+        }
+        activeAbandoned = false
         session.resultTask.cancel()
         reprewarm(session.languageCode)
     }
@@ -357,7 +397,17 @@ private final class FastMicrophoneInput: @unchecked Sendable {
     private let stateLock = NSLock()
     private var running = false
     private var reportedFailure = false
+    /// False after the dual race kills this side: capture continues (levels + raw fan-out)
+    /// but the format conversion and analyzer feed stop burning CPU.
+    private var converting = true
     private var previousDefaultInputDeviceID: AudioDeviceID?
+
+    /// Stop feeding the analyzer while keeping the microphone hot for the raw-buffer fan-out.
+    func stopConverting() {
+        stateLock.lock()
+        converting = false
+        stateLock.unlock()
+    }
 
     /// One-shot input provider for AVAudioConverter: hands the buffer once, then reports
     /// `.noDataNow` so each tap buffer maps to exactly one convert call.
@@ -464,6 +514,11 @@ private final class FastMicrophoneInput: @unchecked Sendable {
     private func receive(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, outputFormat: AVAudioFormat) {
         publishLevel(of: buffer)
         onRawBuffer?(buffer)
+
+        stateLock.lock()
+        let stillConverting = converting
+        stateLock.unlock()
+        guard stillConverting else { return }
 
         let ratio = outputFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 1

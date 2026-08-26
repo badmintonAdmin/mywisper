@@ -96,9 +96,26 @@ final class IslandPreviewDriver: ObservableObject {
 
 /// Everything the island lets you pick, previewed live. Dropped into the
 /// Recording Indicator card when the island style is selected.
+/// Hands the SwiftUI view its hosting NSWindow, so window-level notifications can be
+/// filtered to THIS window instead of firing for every window in the app.
+private struct HostWindowReader: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onWindow(view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { onWindow(view.window) }
+    }
+}
+
 struct IslandSettingsSection: View {
     @ObservedObject private var settings = SettingsManager.shared
     @StateObject private var driver = IslandPreviewDriver()
+    @State private var hostWindow: NSWindow?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -130,8 +147,22 @@ struct IslandSettingsSection: View {
 
             elementsRow
         }
+        .background(HostWindowReader { hostWindow = $0 })
         .onAppear { driver.start() }
         .onDisappear { driver.stop() }
+        // The preview burns real CPU (driver + shaders + particles); pause it whenever OUR
+        // window stops being the active one, resume when it's back. Filtered to the hosting
+        // window — another app window becoming key must not restart a hidden preview.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
+            if let window = hostWindow, (note.object as? NSWindow) === window {
+                driver.stop()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            if let window = hostWindow, (note.object as? NSWindow) === window {
+                driver.start()
+            }
+        }
     }
 
     // MARK: Live preview
@@ -190,7 +221,7 @@ struct IslandSettingsSection: View {
                     RoundedRectangle(cornerRadius: 8).fill(Color.black)
                     switch visual {
                     case .waveform:
-                        IslandWaveformBand(state: driver.state, style: settings.islandWaveformStyle)
+                        IslandWaveformBand(state: driver.state, style: settings.islandWaveformStyle, sheenEnabled: false)
                             .padding(.horizontal, 2)
                     case .glow:
                         RoundedRectangle(cornerRadius: 8)
@@ -255,7 +286,7 @@ struct IslandSettingsSection: View {
                     VStack(spacing: 4) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 7).fill(Color.black)
-                            IslandWaveformBand(state: driver.state, style: style)
+                            IslandWaveformBand(state: driver.state, style: style, sheenEnabled: false)
                                 .padding(.horizontal, 2)
                         }
                         .frame(height: 38)

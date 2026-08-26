@@ -342,6 +342,9 @@ struct FilledWaveShape: Shape {
 struct IslandWaveformBand: View {
     @ObservedObject var state: OverlayState
     let style: IslandWaveformStyle
+    /// The sheen shader runs a per-frame TimelineView + layerEffect — great on the one
+    /// real island, needlessly hot on the nine Settings thumbnails (battery).
+    var sheenEnabled: Bool = true
 
     @State private var start = Date()
     @State private var waveSize = CGSize(width: 1, height: 1)
@@ -354,7 +357,7 @@ struct IslandWaveformBand: View {
 
     var body: some View {
         Group {
-            if carriesOwnTreatment {
+            if carriesOwnTreatment || !sheenEnabled {
                 styledWave
             } else if #available(macOS 14.0, *) {
                 TimelineView(.animation) { context in

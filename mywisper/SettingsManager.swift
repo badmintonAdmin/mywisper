@@ -76,10 +76,21 @@ struct DictationLanguage: Identifiable, Equatable {
     /// e.g. ["en-RU", "ru-RU"] system prefs → ["en-US", "ru-RU"]. The Auto race derives
     /// its pair from this list, so a bilingual Mac races its own two languages out of
     /// the box.
+    /// The user's language list, read LIVE. `Locale.preferredLanguages` is captured at
+    /// process launch — after the user switches the Mac's language it keeps returning the
+    /// old order until relaunch, which sent Russian speech to the English recognizer.
+    /// The AppleLanguages preference reflects the change immediately.
+    static func liveSystemLanguageTags() -> [String] {
+        if let tags = UserDefaults.standard.stringArray(forKey: "AppleLanguages"), !tags.isEmpty {
+            return tags
+        }
+        return Locale.preferredLanguages
+    }
+
     static func preferredCodes() -> [String] {
         var seen = Set<String>()
         var out: [String] = []
-        for preferred in Locale.preferredLanguages {
+        for preferred in liveSystemLanguageTags() {
             let lang = String(preferred.prefix(2)).lowercased()
             if let match = all.first(where: { $0.code.lowercased().hasPrefix(lang + "-") }),
                seen.insert(match.code).inserted {

@@ -138,7 +138,7 @@ class SpeechTranscriber {
             self?.liveRecognitionCompleted(with: result)
         }
 
-        liveRequest = request
+        setLiveRequest(request)
         liveDelegate = delegate
         liveOnFailure = onFailure
         liveFinishCompletion = nil
@@ -146,9 +146,26 @@ class SpeechTranscriber {
         liveTask = recognizer.recognitionTask(with: request, delegate: delegate)
     }
 
+    /// Guards `liveRequest` between the CoreAudio thread (appendLiveBuffer, called from the
+    /// dual race's mic fan-out for the whole session) and main-thread teardown (the early
+    /// kill cancels this session mid-capture) — an unsynchronized var there is UB.
+    private let liveRequestLock = NSLock()
+
+    private var lockedLiveRequest: SFSpeechAudioBufferRecognitionRequest? {
+        liveRequestLock.lock()
+        defer { liveRequestLock.unlock() }
+        return liveRequest
+    }
+
+    private func setLiveRequest(_ request: SFSpeechAudioBufferRecognitionRequest?) {
+        liveRequestLock.lock()
+        liveRequest = request
+        liveRequestLock.unlock()
+    }
+
     /// Feed one microphone buffer into a feed-mode live session (audio thread).
     func appendLiveBuffer(_ buffer: AVAudioPCMBuffer) {
-        liveRequest?.append(buffer)
+        lockedLiveRequest?.append(buffer)
     }
 
     /// Start streaming microphone audio into the recognizer. Partial recognition runs while the
@@ -185,7 +202,7 @@ class SpeechTranscriber {
         }
 
         inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-            self?.liveRequest?.append(buffer)
+            self?.appendLiveBuffer(buffer)
             guard let onLevel,
                   let samples = buffer.floatChannelData?[0],
                   buffer.frameLength > 0 else { return }
@@ -206,7 +223,7 @@ class SpeechTranscriber {
         }
 
         liveEngine = engine
-        liveRequest = request
+        setLiveRequest(request)
         liveDelegate = delegate
         liveOnFailure = onFailure
         liveFinishCompletion = nil
@@ -223,7 +240,7 @@ class SpeechTranscriber {
         }
         liveFinishCompletion = completion
         stopLiveAudio()
-        liveRequest?.endAudio()
+        lockedLiveRequest?.endAudio()
     }
 
     /// Abort the live session, discarding all audio and text.
@@ -235,7 +252,7 @@ class SpeechTranscriber {
         stopLiveAudio()
         liveTask?.cancel()
         liveTask = nil
-        liveRequest = nil
+        setLiveRequest(nil)
         liveDelegate = nil
     }
 
@@ -247,7 +264,7 @@ class SpeechTranscriber {
         liveFinishCompletion = nil
         liveOnFailure = nil
         liveTask = nil
-        liveRequest = nil
+        setLiveRequest(nil)
         liveDelegate = nil
         stopLiveAudio()
 
