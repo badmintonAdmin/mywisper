@@ -11,7 +11,18 @@ STAGING_DIR="$PROJECT_DIR/build/dmg_staging"
 # Full Xcode is required (Metal compilation + xcodebuild). Override with DEVELOPER_DIR.
 XCODE_PATH="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 ARCH="${ARCH:-arm64}"            # target arch for both the app and whisper.cpp
-CODESIGN_ID="${CODESIGN_ID:--}"  # "-" = ad-hoc; or a Developer ID for distribution
+# Signing identity. Prefer a real certificate over ad-hoc: TCC (Accessibility) ties its grant
+# to the signing identity, and ad-hoc identity changes every build — which is why the permission
+# died after every reinstall. A stable "Apple Development" cert keeps it granted across updates.
+CODESIGN_ID="${CODESIGN_ID:-}"
+if [ -z "$CODESIGN_ID" ]; then
+    if security find-identity -v -p codesigning 2>/dev/null | grep -q "Apple Development"; then
+        CODESIGN_ID="Apple Development"
+    else
+        CODESIGN_ID="-"
+    fi
+fi
+echo "  Codesign identity: $CODESIGN_ID"
 BG_DIR="$PROJECT_DIR/build/dmg_background"
 
 # Output goes to a per-arch folder: arm64 → installation/Silicon, x86_64 → installation/Intel.

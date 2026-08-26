@@ -39,6 +39,14 @@
 		A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */; };
 		A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8E3B2F70013A0064176F /* NotificationManager.swift */; };
 		A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */; };
+		A8FA57002F71011A0064176F /* FastSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57012F71011A0064176F /* FastSpeechService.swift */; };
+		A8FA57102F71011A0064176F /* IslandVisuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57112F71011A0064176F /* IslandVisuals.swift */; };
+		A8FA57122F71011A0064176F /* IslandGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57132F71011A0064176F /* IslandGlow.swift */; };
+		A8FA57402F71011A0064176F /* IslandSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57412F71011A0064176F /* IslandSettingsView.swift */; };
+		A8FA57202F71011A0064176F /* EdgeGlow.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57212F71011A0064176F /* EdgeGlow.metal */; };
+		A8FA57222F71011A0064176F /* ParticleCloud.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57232F71011A0064176F /* ParticleCloud.metal */; };
+		A8FA57242F71011A0064176F /* Ripple.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57252F71011A0064176F /* Ripple.metal */; };
+		A8FA57262F71011A0064176F /* WaveformSheen.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57272F71011A0064176F /* WaveformSheen.metal */; };
 		A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */; };
 		A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */; };
 		A8CF90002F7200000064176F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8CF90012F7200000064176F /* OnboardingView.swift */; };
@@ -103,6 +111,14 @@
 		A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsStore.swift; sourceTree = "<group>"; };
 		A8CF8E3B2F70013A0064176F /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioExtractor.swift; sourceTree = "<group>"; };
+		A8FA57012F71011A0064176F /* FastSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastSpeechService.swift; sourceTree = "<group>"; };
+		A8FA57112F71011A0064176F /* IslandVisuals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandVisuals.swift; sourceTree = "<group>"; };
+		A8FA57132F71011A0064176F /* IslandGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandGlow.swift; sourceTree = "<group>"; };
+		A8FA57412F71011A0064176F /* IslandSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandSettingsView.swift; sourceTree = "<group>"; };
+		A8FA57212F71011A0064176F /* EdgeGlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = EdgeGlow.metal; sourceTree = "<group>"; };
+		A8FA57232F71011A0064176F /* ParticleCloud.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ParticleCloud.metal; sourceTree = "<group>"; };
+		A8FA57252F71011A0064176F /* Ripple.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Ripple.metal; sourceTree = "<group>"; };
+		A8FA57272F71011A0064176F /* WaveformSheen.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = WaveformSheen.metal; sourceTree = "<group>"; };
 		A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTranscriptionService.swift; sourceTree = "<group>"; };
 		A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeFileView.swift; sourceTree = "<group>"; };
 		A8CF90012F7200000064176F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -181,6 +197,11 @@
 				A8CF8E2B2F70012A0064176F /* PendingRecordingsStore.swift */,
 				A8CF8E3B2F70013A0064176F /* NotificationManager.swift */,
 				A8CF8F1B2F71011A0064176F /* AudioExtractor.swift */,
+				A8FA57012F71011A0064176F /* FastSpeechService.swift */,
+				A8FA57112F71011A0064176F /* IslandVisuals.swift */,
+				A8FA57132F71011A0064176F /* IslandGlow.swift */,
+				A8FA57412F71011A0064176F /* IslandSettingsView.swift */,
+				A8FA57302F71011A0064176F /* Shaders */,
 				A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */,
 				A8CF8F3B2F71013A0064176F /* TranscribeFileView.swift */,
 				A8CF90012F7200000064176F /* OnboardingView.swift */,
@@ -219,6 +240,17 @@
 				A8CF8CC12F62817E0064176F /* mywisperUITestsLaunchTests.swift */,
 			);
 			path = mywisperUITests;
+			sourceTree = "<group>";
+		};
+		A8FA57302F71011A0064176F /* Shaders */ = {
+			isa = PBXGroup;
+			children = (
+				A8FA57212F71011A0064176F /* EdgeGlow.metal */,
+				A8FA57232F71011A0064176F /* ParticleCloud.metal */,
+				A8FA57252F71011A0064176F /* Ripple.metal */,
+				A8FA57272F71011A0064176F /* WaveformSheen.metal */,
+			);
+			path = Shaders;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -384,6 +416,14 @@
 				A8CF8E2A2F70012A0064176F /* PendingRecordingsStore.swift in Sources */,
 				A8CF8E3A2F70013A0064176F /* NotificationManager.swift in Sources */,
 				A8CF8F1A2F71011A0064176F /* AudioExtractor.swift in Sources */,
+				A8FA57002F71011A0064176F /* FastSpeechService.swift in Sources */,
+				A8FA57102F71011A0064176F /* IslandVisuals.swift in Sources */,
+				A8FA57122F71011A0064176F /* IslandGlow.swift in Sources */,
+				A8FA57402F71011A0064176F /* IslandSettingsView.swift in Sources */,
+				A8FA57202F71011A0064176F /* EdgeGlow.metal in Sources */,
+				A8FA57222F71011A0064176F /* ParticleCloud.metal in Sources */,
+				A8FA57242F71011A0064176F /* Ripple.metal in Sources */,
+				A8FA57262F71011A0064176F /* WaveformSheen.metal in Sources */,
 				A8CF8F2A2F71012A0064176F /* FileTranscriptionService.swift in Sources */,
 				A8CF8F3A2F71013A0064176F /* TranscribeFileView.swift in Sources */,
 				A8CF90002F7200000064176F /* OnboardingView.swift in Sources */,
@@ -546,7 +586,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -561,7 +601,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -577,7 +617,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -592,7 +632,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -606,11 +646,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -625,11 +665,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -643,10 +683,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -660,10 +700,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.4.4;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

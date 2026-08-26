@@ -248,12 +248,25 @@ struct SettingsView: View {
 
                 SectionCard(title: "Transcription Engine", icon: "waveform", subtitle: "Choose how your speech is converted to text") {
                     Picker("Engine", selection: $settings.engine) {
-                        ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
+                        ForEach(TranscriptionEngine.availableCases, id: \.self) { engine in
                             Text(engine.displayName).tag(engine)
                         }
                     }
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
+
+                    if settings.engine == .fastApple {
+                        Divider().padding(.vertical, 4)
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "bolt.fill")
+                                .foregroundColor(.yellow)
+                                .font(.system(size: 12))
+                            Text("Transcribes on-device while you speak — the text is ready the moment you stop. English, German, Spanish, French, Italian, Japanese, Korean, Portuguese and Chinese use Apple's newest engine; other languages (including Русский) stream through the classic Apple engine — still instant.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
 
                     if settings.engine == .cloud {
                         Divider().padding(.vertical, 4)
@@ -267,6 +280,28 @@ struct SettingsView: View {
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
+                    }
+                }
+
+                SectionCard(title: "Recording Indicator", icon: "rectangle.topthird.inset.filled", subtitle: "How the on-screen overlay looks") {
+                    Picker("Style", selection: $settings.overlayStyle) {
+                        ForEach(OverlayStyle.allCases, id: \.self) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+
+                    Text(settings.overlayStyle == .island
+                        ? "A black island growing out of the notch, with a voice-reactive visual."
+                        : "A floating pill you can drag anywhere; the position is remembered.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if settings.overlayStyle == .island {
+                        Divider().padding(.vertical, 6)
+                        IslandSettingsSection()
                     }
                 }
 

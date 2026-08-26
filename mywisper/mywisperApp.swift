@@ -238,6 +238,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let engineName: String
         switch SettingsManager.shared.engine {
         case .apple: engineName = "Apple Speech"
+        case .fastApple: engineName = "Apple Live"
         case .whisper: engineName = "Whisper"
         case .cloud: engineName = "Cloud (OpenAI)"
         }

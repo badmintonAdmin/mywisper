@@ -440,6 +440,7 @@ private struct RecordScreen: View {
         case .cloud: return "cloud"
         case .whisper: return "waveform"
         case .apple: return "apple.logo"
+        case .fastApple: return "bolt.fill"
         }
     }
 
@@ -447,6 +448,7 @@ private struct RecordScreen: View {
         switch settings.engine {
         case .cloud: return "Cloud Whisper"
         case .apple: return "Apple Speech"
+        case .fastApple: return "Apple Live"
         case .whisper:
             let model = modelShortName(settings.whisperModelPath)
             return model.isEmpty ? "Whisper" : "Whisper (\(model))"

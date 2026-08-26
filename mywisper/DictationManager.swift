@@ -21,6 +21,7 @@ class DictationManager: ObservableObject {
             settings.selectedLanguage = selectedLanguage
             speechTranscriber.setLanguage(selectedLanguage)
             whisperTranscriber.setLanguage(selectedLanguage)
+            prewarmFastEngineIfNeeded()
         }
     }
 
@@ -31,6 +32,28 @@ class DictationManager: ObservableObject {
     private var usingLiveSession = false
     private let speechTranscriber = SpeechTranscriber()
     private let whisperTranscriber = WhisperTranscriber()
+    /// True while the current recording streams into the fast Apple engine (SpeechAnalyzer,
+    /// macOS 26+). Decided at record start and read on stop/cancel.
+    private var usingFastSession = false
+    /// True while the current recording streams into the classic SFSpeechRecognizer instead —
+    /// the Apple Live engine's fallback for languages SpeechAnalyzer doesn't cover (Russian,
+    /// Auto) and for macOS < 26. Still streaming, so stopping is near-instant too.
+    private var usingLegacyLiveSession = false
+    /// In-flight fast-session start; stop awaits it so a quick tap can't outrun session setup.
+    private var fastStartTask: Task<Void, Never>?
+    /// Normalized language codes the fast engine supports on this machine (empty before the
+    /// async fetch completes and on macOS < 26). Russian is NOT in this set as of macOS 26.5.
+    private var fastSupportedCodes: Set<String> = []
+    /// FastSpeechService, stored untyped because the class is @available(macOS 26.0+) and this
+    /// property must exist on 13.3. Created eagerly in init on supported systems.
+    private var _fastSpeech: Any?
+    @available(macOS 26.0, *)
+    private var fastSpeech: FastSpeechService {
+        if let existing = _fastSpeech as? FastSpeechService { return existing }
+        let service = FastSpeechService()
+        _fastSpeech = service
+        return service
+    }
     private let openAIService = OpenAIService.shared
     private let cloudWhisperService = CloudWhisperService.shared
     private let textPaster = TextPaster()
@@ -95,6 +118,17 @@ class DictationManager: ObservableObject {
 
         speechTranscriber.configure(language: selectedLanguage)
 
+        // Fast Apple engine (macOS 26+): learn which languages it supports, then prewarm so the
+        // first hotkey press is instant. The supported set also gates the per-session fallback.
+        if #available(macOS 26.0, *) {
+            _fastSpeech = FastSpeechService()
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.fastSupportedCodes = await FastSpeechService.supportedLanguageCodes()
+                self.prewarmFastEngineIfNeeded()
+            }
+        }
+
         // Load Whisper model if engine is set to whisper
         if settings.engine == .whisper && !settings.whisperModelPath.isEmpty {
             whisperTranscriber.loadModel(path: settings.whisperModelPath)
@@ -107,6 +141,10 @@ class DictationManager: ObservableObject {
             if engine == .whisper && !self.settings.whisperModelPath.isEmpty {
                 self.whisperTranscriber.loadModel(path: self.settings.whisperModelPath)
                 self.whisperTranscriber.setLanguage(self.selectedLanguage)
+            }
+            if engine == .fastApple {
+                // sink fires before `settings.engine` is updated; prewarm for the new value.
+                self.prewarmFastEngineIfNeeded(engineOverride: engine)
             }
         }.store(in: &settingsCancellables)
 
@@ -210,7 +248,20 @@ class DictationManager: ObservableObject {
     func cancelOperation() {
         guard isRecording || isTranscribing else { return }
 
-        if usingLiveSession {
+        if usingFastSession {
+            if #available(macOS 26.0, *) {
+                let service = fastSpeech
+                Task { await service.cancel() }
+            }
+            usingFastSession = false
+            if isRecording { print("mywisper: Recording cancelled by user") }
+            isRecording = false
+        } else if usingLegacyLiveSession {
+            speechTranscriber.cancelLiveSession()
+            usingLegacyLiveSession = false
+            if isRecording { print("mywisper: Recording cancelled by user") }
+            isRecording = false
+        } else if usingLiveSession {
             // Tears down recording and any in-flight segment Whisper process; safe whether we were
             // still recording or already transcribing the tail.
             liveController.cancel()
@@ -247,14 +298,44 @@ class DictationManager: ObservableObject {
         hideOverlay()
     }
 
-    /// Shared overlay meter update for whichever recorder is active.
+    /// Timestamp of the last mic level, feeding the dead-microphone watchdog.
+    private var lastLevelAt = Date()
+    /// Fires while recording; marks the mic dead when levels stop arriving for 0.6s
+    /// (the island visuals turn amber — a dead microphone must look different from silence).
+    private var micWatchdogTimer: Timer?
+
+    /// Shared overlay meter update for whichever recorder is active. Smooths the headline
+    /// level with a fast attack / slow release and appends to the waveform history with a
+    /// light EMA against the previous bar (calms per-tick jitter without dulling speech).
     private func handleAudioLevel(_ level: Float) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.maxAudioLevel = max(self.maxAudioLevel, level)
-            self.recordingPanel?.state.audioLevel = level
+            self.lastLevelAt = Date()
+            if let state = self.recordingPanel?.state {
+                state.audioLevel = max(level, state.audioLevel * 0.88)
+                state.levelHistory.removeFirst()
+                let lastBar = state.levelHistory.last ?? 0
+                state.levelHistory.append(0.6 * level + 0.4 * lastBar)
+                state.isAudioAlive = true
+            }
             if let start = self.recordingStartTime {
                 self.recordingPanel?.state.elapsedSeconds = Date().timeIntervalSince(start)
+            }
+        }
+    }
+
+    private func startMicWatchdog() {
+        micWatchdogTimer?.invalidate()
+        micWatchdogTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+            guard self.isRecording else {
+                timer.invalidate()
+                self.micWatchdogTimer = nil
+                return
+            }
+            if Date().timeIntervalSince(self.lastLevelAt) > 0.6 {
+                self.recordingPanel?.state.isAudioAlive = false
             }
         }
     }
@@ -265,18 +346,105 @@ class DictationManager: ObservableObject {
         settings.engine == .whisper && settings.liveTranscriptionEnabled && whisperTranscriber.isReady
     }
 
+    /// True when the fast (streaming) Apple engine can serve the current language on this OS.
+    /// False silently falls the session back to classic SFSpeechRecognizer — that covers
+    /// Russian and "Auto" (not supported by Apple's new API yet) and macOS < 26.
+    private var fastSessionUsable: Bool {
+        guard settings.engine == .fastApple else { return false }
+        guard #available(macOS 26.0, *) else { return false }
+        return fastSupportedCodes.contains(selectedLanguage.lowercased())
+    }
+
+    /// Keep a warm analyzer for the selected language whenever the fast engine is active, so
+    /// the hotkey press spends zero time on model setup. Safe to call anytime; no-ops when the
+    /// engine/language/OS doesn't qualify.
+    private func prewarmFastEngineIfNeeded(engineOverride: TranscriptionEngine? = nil) {
+        guard (engineOverride ?? settings.engine) == .fastApple else { return }
+        if #available(macOS 26.0, *) {
+            let code = selectedLanguage
+            guard fastSupportedCodes.contains(code.lowercased()) else { return }
+            let service = fastSpeech
+            Task {
+                await service.prewarm(languageCode: code)
+            }
+        }
+    }
+
+    /// Kick off a streaming fast-engine session. Setup is async (actor hop + analyzer attach,
+    /// normally a few ms thanks to prewarming); a failure after this point tears the recording
+    /// UI down from inside the task.
+    private func startFastSession() {
+        guard #available(macOS 26.0, *) else { return }
+        let code = selectedLanguage
+        let service = fastSpeech
+        fastStartTask = Task { [weak self] in
+            do {
+                try await service.start(
+                    languageCode: code,
+                    onLevel: { [weak self] level in
+                        self?.handleAudioLevel(level)
+                    },
+                    onUpdate: { [weak self] text in
+                        DispatchQueue.main.async {
+                            guard let self, self.isRecording else { return }
+                            self.recordingPanel?.state.liveText = text
+                        }
+                    },
+                    onFailure: { [weak self] message in
+                        DispatchQueue.main.async { self?.failFastSession(message) }
+                    }
+                )
+            } catch {
+                DispatchQueue.main.async { self?.failFastSession(error.localizedDescription) }
+            }
+        }
+    }
+
+    /// Tear down a legacy live session that died while recording. Main thread only.
+    private func failLegacyLiveSession(_ message: String) {
+        guard usingLegacyLiveSession, isRecording else { return }
+        usingLegacyLiveSession = false
+        isRecording = false
+        recordingStartTime = nil
+        speechTranscriber.cancelLiveSession()
+        playErrorCue()
+        hideOverlay()
+        showTransientStatus(message, duration: 4.0)
+    }
+
+    /// Tear down a fast session that died while recording (mic failure, analyzer error).
+    /// Must be called on the main thread.
+    private func failFastSession(_ message: String) {
+        guard usingFastSession, isRecording else { return }
+        usingFastSession = false
+        isRecording = false
+        recordingStartTime = nil
+        if #available(macOS 26.0, *) {
+            let service = fastSpeech
+            Task { await service.cancel() }
+        }
+        playErrorCue()
+        hideOverlay()
+        showTransientStatus(message, duration: 4.0)
+    }
+
     private func startRecording() {
         guard !isRecording && !isTranscribing else { return }
 
         // Check engine readiness
         switch settings.engine {
-        case .apple:
-            if !speechTranscriber.isReady {
-                speechTranscriber.configure(language: selectedLanguage)
-                guard speechTranscriber.isReady else {
-                    print("mywisper: Speech recognizer not available")
-                    showTransientStatus("Speech recognizer not available")
-                    return
+        case .apple, .fastApple:
+            // The fast engine needs no readiness check (it prepares itself), but its fallback
+            // path — unsupported language (Russian, Auto) or macOS < 26 — runs through the
+            // classic recognizer, which must be ready.
+            if settings.engine == .apple || !fastSessionUsable {
+                if !speechTranscriber.isReady {
+                    speechTranscriber.configure(language: selectedLanguage)
+                    guard speechTranscriber.isReady else {
+                        print("mywisper: Speech recognizer not available")
+                        showTransientStatus("Speech recognizer not available")
+                        return
+                    }
                 }
             }
         case .whisper:
@@ -316,8 +484,30 @@ class DictationManager: ObservableObject {
         previousApp = NSWorkspace.shared.frontmostApplication
 
         usingLiveSession = shouldUseLiveSession
+        usingFastSession = fastSessionUsable
+        // Apple Live with a language the new API can't do (Russian, Auto) or macOS < 26:
+        // stream into the classic recognizer instead, so stopping is still near-instant.
+        usingLegacyLiveSession = !usingFastSession && settings.engine == .fastApple && speechTranscriber.isReady
         do {
-            if usingLiveSession {
+            if usingFastSession {
+                // Async setup; failures surface via failFastSession from inside the task.
+                startFastSession()
+            } else if usingLegacyLiveSession {
+                try speechTranscriber.startLiveSession(
+                    onLevel: { [weak self] level in
+                        self?.handleAudioLevel(level)
+                    },
+                    onPartial: { [weak self] text in
+                        DispatchQueue.main.async {
+                            guard let self, self.isRecording else { return }
+                            self.recordingPanel?.state.liveText = text
+                        }
+                    },
+                    onFailure: { [weak self] message in
+                        DispatchQueue.main.async { self?.failLegacyLiveSession(message) }
+                    }
+                )
+            } else if usingLiveSession {
                 try liveController.start(
                     language: selectedLanguage,
                     modelPath: settings.whisperModelPath,
@@ -329,6 +519,8 @@ class DictationManager: ObservableObject {
         } catch {
             print("mywisper: Failed to start recording: \(error.localizedDescription)")
             usingLiveSession = false
+            usingFastSession = false
+            usingLegacyLiveSession = false
             playErrorCue()
             showTransientStatus("Failed to start recording — check microphone permission")
             return
@@ -349,6 +541,15 @@ class DictationManager: ObservableObject {
         recordingPanel?.state.isLiveSession = usingLiveSession
         recordingPanel?.state.liveSegmentsDone = 0
         recordingPanel?.state.elapsedSeconds = 0
+        // Reset the voice visuals to a live-and-silent baseline and fire the one-shot
+        // session effects (glow bloom, ripple, sweep phase).
+        recordingPanel?.state.audioLevel = 0
+        recordingPanel?.state.levelHistory = [Float](repeating: 0, count: OverlayState.levelHistoryCount)
+        recordingPanel?.state.isAudioAlive = true
+        recordingPanel?.state.liveText = ""
+        recordingPanel?.state.sessionEpoch += 1
+        lastLevelAt = Date()
+        startMicWatchdog()
     }
 
     private func stopRecordingAndTranscribe() {
@@ -360,7 +561,16 @@ class DictationManager: ObservableObject {
         // on a genuinely dead mic (wrong input device, muted, unplugged) — the threshold is far
         // below real speech.
         if maxAudioLevel < silenceLevelThreshold {
-            if usingLiveSession {
+            if usingFastSession {
+                if #available(macOS 26.0, *) {
+                    let service = fastSpeech
+                    Task { await service.cancel() }
+                }
+                usingFastSession = false
+            } else if usingLegacyLiveSession {
+                speechTranscriber.cancelLiveSession()
+                usingLegacyLiveSession = false
+            } else if usingLiveSession {
                 liveController.cancel()
                 usingLiveSession = false
             } else {
@@ -372,6 +582,78 @@ class DictationManager: ObservableObject {
             hideOverlay()
             print("mywisper: Recording was silent (peak level \(maxAudioLevel)) — skipping transcription")
             showTransientStatus("No speech detected — check your microphone")
+            return
+        }
+
+        // Fast (streaming) Apple path: the audio was transcribed WHILE the user spoke, so
+        // finalization is near-instant — stop the mic, finalize the tail, hand the text to the
+        // shared pipeline.
+        if usingFastSession {
+            usingFastSession = false
+            isRecording = false
+
+            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            if duration < AudioRecorder.minimumDuration {
+                if #available(macOS 26.0, *) {
+                    let service = fastSpeech
+                    Task { await service.cancel() }
+                }
+                isTranscribing = false
+                recordingPanel?.state.progress = nil
+                hideOverlay()
+                print("mywisper: Recording too short")
+                showTransientStatus("Recording too short")
+                return
+            }
+
+            isTranscribing = true
+            recordingPanel?.state.statusText = "Transcribing..."
+            recordingPanel?.state.isRecording = false
+            recordingPanel?.state.isTranscribing = true
+            recordingPanel?.state.progress = nil
+
+            let completionHandler = makeTranscriptionCompletionHandler()
+            if #available(macOS 26.0, *) {
+                let startTask = fastStartTask
+                let service = fastSpeech
+                Task {
+                    // A very quick tap can stop before start finished attaching; wait it out.
+                    await startTask?.value
+                    do {
+                        let text = try await service.finish()
+                        completionHandler(.success(text))
+                    } catch {
+                        completionHandler(.failure(error))
+                    }
+                }
+            }
+            return
+        }
+
+        // Legacy live path (Apple Live's fallback, e.g. Russian): SFSpeechRecognizer already
+        // processed the audio while the user spoke — finalization lands in a fraction of a second.
+        if usingLegacyLiveSession {
+            usingLegacyLiveSession = false
+            isRecording = false
+
+            let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            if duration < AudioRecorder.minimumDuration {
+                speechTranscriber.cancelLiveSession()
+                isTranscribing = false
+                recordingPanel?.state.progress = nil
+                hideOverlay()
+                print("mywisper: Recording too short")
+                showTransientStatus("Recording too short")
+                return
+            }
+
+            isTranscribing = true
+            recordingPanel?.state.statusText = "Transcribing..."
+            recordingPanel?.state.isRecording = false
+            recordingPanel?.state.isTranscribing = true
+            recordingPanel?.state.progress = nil
+
+            speechTranscriber.finishLiveSession(completion: makeTranscriptionCompletionHandler())
             return
         }
 
@@ -429,7 +711,9 @@ class DictationManager: ObservableObject {
         let completionHandler = makeTranscriptionCompletionHandler()
 
         switch settings.engine {
-        case .apple:
+        case .apple, .fastApple:
+            // .fastApple only reaches this file-based path as the classic fallback (unsupported
+            // language or macOS < 26) — the streaming path returned earlier.
             speechTranscriber.transcribe(audioFileURL: url, completion: completionHandler)
         case .whisper:
             whisperTranscriber.transcribe(

@@ -7,6 +7,9 @@
 
 import Foundation
 import Speech
+import AVFoundation
+import Accelerate
+import CoreAudio
 
 class SpeechTranscriber {
     private var recognizer: SFSpeechRecognizer?
@@ -18,6 +21,20 @@ class SpeechTranscriber {
     /// own strong reference the delegate would deallocate mid-recognition and we'd get no result.
     private var activeTask: SFSpeechRecognitionTask?
     private var activeDelegate: SegmentAccumulatingDelegate?
+
+    // MARK: Live (streaming) session state
+    // Used by the Apple Live engine's fallback for languages the new SpeechAnalyzer doesn't
+    // cover (Russian!): audio streams into SFSpeechRecognizer WHILE the user speaks, so the
+    // result at stop is near-instant, versus the classic record-file-then-transcribe path.
+    private var liveEngine: AVAudioEngine?
+    private var liveRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var liveTask: SFSpeechRecognitionTask?
+    private var liveDelegate: SegmentAccumulatingDelegate?
+    private var liveFinishCompletion: ((Result<String, Error>) -> Void)?
+    private var liveOnFailure: ((String) -> Void)?
+    /// Previous system default input, stashed while we honor the user's chosen microphone
+    /// (AVAudioEngine's inputNode follows the system default) — restored on stop.
+    private var livePreviousDefaultInputID: AudioDeviceID?
 
     var isReady: Bool {
         recognizer?.isAvailable ?? false
@@ -91,6 +108,143 @@ class SpeechTranscriber {
         activeDelegate = delegate
         activeTask = recognizer.recognitionTask(with: request, delegate: delegate)
     }
+
+    // MARK: - Live (streaming) session
+
+    var liveSessionActive: Bool { liveEngine != nil }
+
+    /// Start streaming microphone audio into the recognizer. Partial recognition runs while the
+    /// user speaks; `finishLiveSession` then only finalizes the tail, so the result is
+    /// near-instant. `onLevel` gets a normalized 0…1 mic level per buffer (audio thread);
+    /// `onFailure` fires once if recognition dies mid-session (before finish is called).
+    func startLiveSession(
+        onLevel: ((Float) -> Void)?,
+        onPartial: ((String) -> Void)? = nil,
+        onFailure: @escaping (String) -> Void
+    ) throws {
+        guard let recognizer = recognizer, recognizer.isAvailable else {
+            throw TranscriberError.recognizerUnavailable
+        }
+        guard liveEngine == nil else { return }
+
+        applyLiveSelectedInputDevice()
+
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        guard format.channelCount > 0, format.sampleRate > 0 else {
+            restoreLiveDefaultInputDevice()
+            throw TranscriberError.recognizerUnavailable
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+
+        let delegate = SegmentAccumulatingDelegate(onPartial: onPartial) { [weak self] result in
+            self?.liveRecognitionCompleted(with: result)
+        }
+
+        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
+            self?.liveRequest?.append(buffer)
+            guard let onLevel,
+                  let samples = buffer.floatChannelData?[0],
+                  buffer.frameLength > 0 else { return }
+            let rms = vDSP.rootMeanSquare(
+                UnsafeBufferPointer(start: samples, count: Int(buffer.frameLength))
+            )
+            let db = 20 * log10(max(rms, .leastNormalMagnitude))
+            onLevel(min(1, max(0, (db + 50) / 50)))
+        }
+
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            restoreLiveDefaultInputDevice()
+            throw error
+        }
+
+        liveEngine = engine
+        liveRequest = request
+        liveDelegate = delegate
+        liveOnFailure = onFailure
+        liveFinishCompletion = nil
+        liveTask = recognizer.recognitionTask(with: request, delegate: delegate)
+    }
+
+    /// Stop capturing and finalize. The recognizer already processed the audio while the user
+    /// spoke, so the delegate's terminal callback lands within a fraction of a second.
+    func finishLiveSession(completion: @escaping (Result<String, Error>) -> Void) {
+        guard liveEngine != nil else {
+            completion(.failure(TranscriberError.recognizerUnavailable))
+            return
+        }
+        liveFinishCompletion = completion
+        stopLiveAudio()
+        liveRequest?.endAudio()
+    }
+
+    /// Abort the live session, discarding all audio and text.
+    func cancelLiveSession() {
+        guard liveEngine != nil else { return }
+        liveFinishCompletion = nil
+        liveOnFailure = nil
+        stopLiveAudio()
+        liveTask?.cancel()
+        liveTask = nil
+        liveRequest = nil
+        liveDelegate = nil
+    }
+
+    /// Terminal delegate callback for the live session (may arrive on any queue).
+    private func liveRecognitionCompleted(with result: Result<String, Error>) {
+        let completion = liveFinishCompletion
+        let failure = liveOnFailure
+        liveFinishCompletion = nil
+        liveOnFailure = nil
+        liveTask = nil
+        liveRequest = nil
+        liveDelegate = nil
+        stopLiveAudio()
+
+        if let completion {
+            completion(result)
+        } else if case .failure(let error) = result, let failure {
+            // Died mid-recording, before finish was requested.
+            failure(error.localizedDescription)
+        }
+    }
+
+    private func stopLiveAudio() {
+        guard let engine = liveEngine else { return }
+        liveEngine = nil
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        restoreLiveDefaultInputDevice()
+    }
+
+    // Honor the user's chosen input device (mirrors AudioRecorder).
+    private func applyLiveSelectedInputDevice() {
+        livePreviousDefaultInputID = nil
+        let savedID = SettingsManager.shared.selectedInputDeviceID
+        guard !savedID.isEmpty else { return }
+        guard let target = AudioInputDevices.available().first(where: { $0.uniqueID == savedID }) else {
+            return
+        }
+        if let current = AudioInputDevices.currentDefaultInputDeviceID(), current != target.coreAudioID {
+            livePreviousDefaultInputID = current
+            AudioInputDevices.setDefaultInputDevice(target.coreAudioID)
+        }
+    }
+
+    private func restoreLiveDefaultInputDevice() {
+        if let previous = livePreviousDefaultInputID {
+            AudioInputDevices.setDefaultInputDevice(previous)
+            livePreviousDefaultInputID = nil
+        }
+    }
 }
 
 /// Collects every finalized speech segment for one recognition request and joins them in order,
@@ -99,9 +253,25 @@ private final class SegmentAccumulatingDelegate: NSObject, SFSpeechRecognitionTa
     private var segments: [String] = []
     private var didComplete = false
     private let completion: (Result<String, Error>) -> Void
+    /// Live-draft feed: finalized segments plus the current in-progress hypothesis.
+    /// nil for file-based transcription, where nobody watches partials.
+    private let onPartial: ((String) -> Void)?
 
-    init(completion: @escaping (Result<String, Error>) -> Void) {
+    init(onPartial: ((String) -> Void)? = nil, completion: @escaping (Result<String, Error>) -> Void) {
+        self.onPartial = onPartial
         self.completion = completion
+    }
+
+    /// Streaming hypothesis for the CURRENT segment (cumulative within it, replaced on the
+    /// next). Joined after the finalized segments it extends.
+    func speechRecognitionTask(
+        _ task: SFSpeechRecognitionTask,
+        didHypothesizeTranscription transcription: SFTranscription
+    ) {
+        guard let onPartial else { return }
+        let partial = transcription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = (segments + (partial.isEmpty ? [] : [partial])).joined(separator: " ")
+        onPartial(combined)
     }
 
     /// Called once for each finalized segment of the audio. These results are per-segment (not

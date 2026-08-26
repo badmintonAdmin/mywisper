@@ -29,7 +29,7 @@ struct OnboardingView: View {
 
     private var engineChosen: Bool {
         switch settings.engine {
-        case .apple:
+        case .apple, .fastApple:
             return true
         case .whisper:
             return !settings.whisperModelPath.isEmpty
@@ -186,7 +186,7 @@ struct OnboardingView: View {
             isDone: engineChosen
         ) {
             Picker("Engine", selection: $settings.engine) {
-                ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
+                ForEach(TranscriptionEngine.availableCases, id: \.self) { engine in
                     Text(engine.displayName).tag(engine)
                 }
             }
@@ -194,7 +194,7 @@ struct OnboardingView: View {
             .labelsHidden()
 
             switch settings.engine {
-            case .apple:
+            case .apple, .fastApple:
                 StatusPill(text: "Ready to use", icon: "checkmark.circle.fill", isGood: true)
             case .whisper:
                 if engineChosen {

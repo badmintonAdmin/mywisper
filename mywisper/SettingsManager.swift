@@ -10,15 +10,38 @@ import AppKit
 import ServiceManagement
 
 enum TranscriptionEngine: String, CaseIterable {
+    case fastApple = "fastApple"
     case apple = "apple"
     case whisper = "whisper"
     case cloud = "cloud"
 
     var displayName: String {
         switch self {
+        case .fastApple: return "Apple Live (instant, streams as you speak)"
         case .apple: return "Apple Speech (fast, lower quality)"
         case .whisper: return "Whisper (better quality, slower)"
         case .cloud: return "Cloud (OpenAI Whisper API)"
+        }
+    }
+
+    /// Engines selectable on this Mac. Apple Live needs macOS 26's SpeechAnalyzer;
+    /// on older systems the case is hidden entirely (a stored "fastApple" preference
+    /// still degrades gracefully — DictationManager falls back to classic Apple Speech).
+    static var availableCases: [TranscriptionEngine] {
+        if #available(macOS 26.0, *) { return allCases }
+        return allCases.filter { $0 != .fastApple }
+    }
+}
+
+/// Visual style of the on-screen recording indicator.
+enum OverlayStyle: String, CaseIterable {
+    case classic = "classic"
+    case island = "island"
+
+    var displayName: String {
+        switch self {
+        case .classic: return "Floating pill (draggable)"
+        case .island: return "Notch island (top center)"
         }
     }
 }
@@ -142,6 +165,51 @@ class SettingsManager: ObservableObject {
 
     @Published var engine: TranscriptionEngine {
         didSet { UserDefaults.standard.set(engine.rawValue, forKey: "transcriptionEngine") }
+    }
+
+    /// Look of the on-screen recording indicator: classic draggable pill or Talkify-style
+    /// notch island docked at the top center of the screen.
+    @Published var overlayStyle: OverlayStyle {
+        didSet { UserDefaults.standard.set(overlayStyle.rawValue, forKey: "overlayStyle") }
+    }
+
+    // MARK: Island visual picks (all ported from Talkify's HUD settings)
+
+    /// The voice-reactive visual in the island's band while recording.
+    @Published var islandVisual: IslandVoiceVisual {
+        didSet { UserDefaults.standard.set(islandVisual.rawValue, forKey: "islandVisual") }
+    }
+
+    /// Which waveform look renders when `islandVisual == .waveform`.
+    @Published var islandWaveformStyle: IslandWaveformStyle {
+        didSet { UserDefaults.standard.set(islandWaveformStyle.rawValue, forKey: "islandWaveformStyle") }
+    }
+
+    /// Color palette for the Edge Glow beam + particle cloud.
+    @Published var islandGlowPalette: IslandGlowPalette {
+        didSet { UserDefaults.standard.set(islandGlowPalette.rawValue, forKey: "islandGlowPalette") }
+    }
+
+    /// Whether the Edge Glow's particle cloud renders inside the island.
+    @Published var islandGlowParticles: Bool {
+        didSet { UserDefaults.standard.set(islandGlowParticles, forKey: "islandGlowParticles") }
+    }
+
+    /// How the island enters and leaves the screen edge.
+    @Published var islandRevealStyle: IslandRevealStyle {
+        didSet { UserDefaults.standard.set(islandRevealStyle.rawValue, forKey: "islandRevealStyle") }
+    }
+
+    /// Our own chrome inside the island, individually removable so the island can be as
+    /// clean as Talkify's (which shows only the visual).
+    @Published var islandShowTimer: Bool {
+        didSet { UserDefaults.standard.set(islandShowTimer, forKey: "islandShowTimer") }
+    }
+    @Published var islandShowStopButton: Bool {
+        didSet { UserDefaults.standard.set(islandShowStopButton, forKey: "islandShowStopButton") }
+    }
+    @Published var islandShowRecordingDot: Bool {
+        didSet { UserDefaults.standard.set(islandShowRecordingDot, forKey: "islandShowRecordingDot") }
     }
 
     @Published var whisperModelPath: String {
@@ -351,6 +419,34 @@ class SettingsManager: ObservableObject {
     init() {
         let engineRaw = UserDefaults.standard.string(forKey: "transcriptionEngine") ?? "apple"
         self.engine = TranscriptionEngine(rawValue: engineRaw) ?? .apple
+
+        let overlayStyleRaw = UserDefaults.standard.string(forKey: "overlayStyle") ?? ""
+        self.overlayStyle = OverlayStyle(rawValue: overlayStyleRaw) ?? .classic
+
+        self.islandVisual = IslandVoiceVisual(
+            rawValue: UserDefaults.standard.string(forKey: "islandVisual") ?? ""
+        ) ?? .waveform
+        self.islandWaveformStyle = IslandWaveformStyle(
+            rawValue: UserDefaults.standard.string(forKey: "islandWaveformStyle") ?? ""
+        ) ?? .silver
+        self.islandGlowPalette = IslandGlowPalette(
+            rawValue: UserDefaults.standard.string(forKey: "islandGlowPalette") ?? ""
+        ) ?? .spectrum
+        self.islandGlowParticles = UserDefaults.standard.object(forKey: "islandGlowParticles") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "islandGlowParticles")
+        self.islandRevealStyle = IslandRevealStyle(
+            rawValue: UserDefaults.standard.string(forKey: "islandRevealStyle") ?? ""
+        ) ?? .slide
+        self.islandShowTimer = UserDefaults.standard.object(forKey: "islandShowTimer") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "islandShowTimer")
+        self.islandShowStopButton = UserDefaults.standard.object(forKey: "islandShowStopButton") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "islandShowStopButton")
+        self.islandShowRecordingDot = UserDefaults.standard.object(forKey: "islandShowRecordingDot") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "islandShowRecordingDot")
         self.whisperModelPath = UserDefaults.standard.string(forKey: "whisperModelPath") ?? ""
         self.selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "en-US"
         self.selectedInputDeviceID = UserDefaults.standard.string(forKey: "selectedInputDeviceID") ?? ""
