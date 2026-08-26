@@ -300,8 +300,9 @@ class DictationManager: ObservableObject {
                 guard let self = self else { return }
                 let system = DictationLanguage.resolvedSystemCode()
                 // The notification also fires for region/time-format changes; nothing to do
-                // unless the resolved LANGUAGE actually moved.
-                guard system != self.speechConfiguredLanguage else { return }
+                // unless the resolved system LANGUAGE actually moved.
+                guard system != self.lastSystemLanguageCode else { return }
+                self.lastSystemLanguageCode = system
                 DebugLog.log("system locale changed → system language now \(system)")
                 // Eagerly reconfigure the classic recognizer for the new language: macOS
                 // reloads speech assets after a language switch, and the first sessions can
@@ -587,7 +588,7 @@ class DictationManager: ObservableObject {
 
         // Both sides' partials feed the early-kill comparison and the confident-finish gate;
         // the live text follows one side, and hops to the survivor if the driver is killed.
-        let legacyPartialHandler: ((String) -> Void)? = { [weak self] text in
+        let legacyPartialHandler: (String) -> Void = { [weak self] text in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.dualLegacyPartial = text
@@ -597,7 +598,7 @@ class DictationManager: ObservableObject {
                 }
             }
         }
-        let fastUpdateHandler: (@Sendable (String) -> Void)? = { [weak self] text in
+        let fastUpdateHandler: @Sendable (String) -> Void = { [weak self] text in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.dualFastPartial = text
@@ -667,7 +668,7 @@ class DictationManager: ObservableObject {
         }
         /// Punctuation-only "transcripts" (the wrong-language failure mode) count as empty.
         func meaningful(_ s: String) -> Bool {
-            s.contains(where: { $0.isLetter || $0.isNumber })
+            meaningfulCount(s) > 0
         }
         let fast = fastText.trimmingCharacters(in: .whitespacesAndNewlines)
         let legacy = legacyText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -754,6 +755,8 @@ class DictationManager: ObservableObject {
     /// The language the classic speech recognizer is currently configured for; lets a
     /// second-language session reconfigure only when it actually differs.
     private var speechConfiguredLanguage: String?
+    /// Last system language this process acted on — the locale-change observer's no-op guard.
+    private var lastSystemLanguageCode = DictationLanguage.resolvedSystemCode()
 
     /// The two languages the Auto race runs: the user's first preferred language, paired
     /// with the explicit second language when set, else the next distinct preferred
@@ -830,8 +833,14 @@ class DictationManager: ObservableObject {
         // the wrong-language side with no stop-time recovery. Silence keeps both running —
         // worst case is the pre-optimization behavior.
         if legacyCount >= 12 && fastCount >= 1 && legacyCount >= 2 * fastCount {
+            guard let generation = dualFastGeneration else {
+                // The fast session hasn't handed us its token yet — a kill now would only
+                // flip bookkeeping while the analyzer kept running. Let the race continue.
+                DebugLog.log("dual race: skip fast kill — session not attached yet")
+                return
+            }
             dualKilled = .fast
-            if #available(macOS 26.0, *), let generation = dualFastGeneration {
+            if #available(macOS 26.0, *) {
                 let service = fastSpeech
                 Task { await service.abandonAnalysis(generation: generation) }
             }
@@ -1081,6 +1090,11 @@ class DictationManager: ObservableObject {
             usingDualSession = false
             dualPlan = nil
             isRecording = false
+            // Snapshot the live drafts BEFORE the state reset wipes them — the confident
+            // early-deliver gate compares against them; reading the cleared vars made the
+            // gate always pass (first finisher won unconditionally).
+            let finalFastPartial = dualFastPartial
+            let finalLegacyPartial = dualLegacyPartial
             let killedSide = resetDualKillState()
 
             let duration = recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
@@ -1146,6 +1160,13 @@ class DictationManager: ObservableObject {
                 if fastText.isEmpty && legacyText.isEmpty {
                     if let error = join.fastError {
                         completionHandler(.failure(error))
+                    } else if killedSide != nil {
+                        // One side was killed early and the SURVIVOR came back empty (it
+                        // died mid-dictation) — that's a failure to surface, not silence.
+                        completionHandler(.failure(NSError(
+                            domain: "mywisper", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Transcription failed — please try again"]
+                        )))
                     } else {
                         completionHandler(.success(""))
                     }
@@ -1163,7 +1184,7 @@ class DictationManager: ObservableObject {
             }
 
             func meaningful(_ s: String) -> Bool {
-                s.contains(where: { $0.isLetter || $0.isNumber })
+                Self.meaningfulCount(s) > 0
             }
 
             if killedSide == .legacy {
@@ -1178,7 +1199,7 @@ class DictationManager: ObservableObject {
                         join.legacy = (text: text, confidence: confidence)
                         join.legacyDone = true
                         if confidence >= earlyDeliverThreshold, meaningful(text) {
-                            earlyDeliver(text, plan.legacy, confidence, self?.dualFastPartial ?? "")
+                            earlyDeliver(text, plan.legacy, confidence, finalFastPartial)
                         }
                         resolve()
                     }
@@ -1197,7 +1218,7 @@ class DictationManager: ObservableObject {
                             join.fastDone = true
                             if let confidence = result.confidence,
                                confidence >= earlyDeliverThreshold, meaningful(result.text) {
-                                earlyDeliver(result.text, plan.fast, confidence, self.dualLegacyPartial)
+                                earlyDeliver(result.text, plan.fast, confidence, finalLegacyPartial)
                             }
                             resolve()
                         }
