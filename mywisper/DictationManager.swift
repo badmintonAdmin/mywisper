@@ -165,11 +165,7 @@ class DictationManager: ObservableObject {
         // first hotkey press is instant. The supported set also gates the per-session fallback.
         if #available(macOS 26.0, *) {
             _fastSpeech = FastSpeechService()
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                self.fastSupportedCodes = await FastSpeechService.supportedLanguageCodes()
-                self.prewarmFastEngineIfNeeded()
-            }
+            fetchFastSupportedCodes()
         }
 
         // Load Whisper model if engine is set to whisper
@@ -479,13 +475,44 @@ class DictationManager: ObservableObject {
         settings.engine == .whisper && settings.liveTranscriptionEnabled && whisperTranscriber.isReady
     }
 
+    /// SpeechAnalyzer's launch language list, used until the live fetch lands. Routing must
+    /// never depend on an async call having completed: after a reinstall the fetch once came
+    /// back empty and every session silently degraded to a single-language English path —
+    /// Russian dictation just vanished.
+    private static let fastBaselineCodes: Set<String> = [
+        "en-us", "en-gb", "en-au", "en-ca", "en-in", "en-ie", "en-nz", "en-sg", "en-za",
+        "de-de", "de-at", "de-ch", "es-es", "es-mx", "es-us", "es-cl",
+        "fr-fr", "fr-ca", "fr-be", "fr-ch", "it-it", "it-ch",
+        "ja-jp", "ko-kr", "pt-br", "pt-pt", "zh-cn", "zh-tw", "zh-hk", "yue-cn",
+    ]
+
+    /// Fetch the live supported set, retrying while the system answers empty (seen right
+    /// after a reinstall). Until it lands, `fastUsable` runs on the baseline list.
+    private func fetchFastSupportedCodes(attempt: Int = 0) {
+        if #available(macOS 26.0, *) {
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let codes = await FastSpeechService.supportedLanguageCodes()
+                DebugLog.log("fast engine supported languages fetched: \(codes.count) (attempt \(attempt))")
+                if codes.isEmpty, attempt < 5 {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    self.fetchFastSupportedCodes(attempt: attempt + 1)
+                } else if !codes.isEmpty {
+                    self.fastSupportedCodes = codes
+                    self.prewarmFastEngineIfNeeded()
+                }
+            }
+        }
+    }
+
     /// True when the fast (streaming) Apple engine can serve `code` on this OS. False falls
     /// the session back to classic SFSpeechRecognizer — that covers Russian and "Auto" (not
     /// supported by Apple's new API yet) and macOS < 26.
     private func fastUsable(_ code: String) -> Bool {
         guard settings.engine == .fastApple else { return false }
         guard #available(macOS 26.0, *) else { return false }
-        return fastSupportedCodes.contains(code.lowercased())
+        let codes = fastSupportedCodes.isEmpty ? Self.fastBaselineCodes : fastSupportedCodes
+        return codes.contains(code.lowercased())
     }
 
     /// Whether THIS session (its own language — the second-language key may override the
@@ -511,7 +538,7 @@ class DictationManager: ObservableObject {
                 ]
             }
             codes = codes.filter { !$0.isEmpty }
-            let supported = fastSupportedCodes
+            let supported = fastSupportedCodes.isEmpty ? Self.fastBaselineCodes : fastSupportedCodes
             let service = fastSpeech
             Task {
                 for code in codes where supported.contains(code.lowercased()) {
@@ -545,7 +572,7 @@ class DictationManager: ObservableObject {
             onFailure: { message in
                 // The legacy side dying mid-race is not fatal — the fast side continues and
                 // wins by default at stop.
-                print("mywisper: dual race — legacy side failed: \(message)")
+                DebugLog.log("dual race: legacy side failed: \(message)")
             }
         )
 
@@ -660,6 +687,7 @@ class DictationManager: ObservableObject {
     /// Also ends a dual race — its microphone lives in the fast session's tap.
     /// Must be called on the main thread.
     private func failFastSession(_ message: String) {
+        DebugLog.log("fast session failed: \(message)")
         guard usingFastSession || usingDualSession, isRecording else { return }
         if usingDualSession {
             speechTranscriber.cancelLiveSession()
@@ -855,6 +883,9 @@ class DictationManager: ObservableObject {
         hotkeyManager.isOperationActive = true
         activity.hold()
 
+        // Session routing trace: which language/path this press actually got.
+        DebugLog.log("session start: lang=\(sessionLanguage) dual=\(dualPlan.map { "\($0.fast)|\($0.legacy)" } ?? "-") fast=\(usingFastSession) legacyLive=\(usingLegacyLiveSession) whisperLive=\(usingLiveSession) engine=\(settings.engine.rawValue) translate=\(sessionTranslate) supportedCodes=\(fastSupportedCodes.count)")
+
         // Light audible cue so it's clear recording actually started.
         playCue()
 
@@ -989,12 +1020,8 @@ class DictationManager: ObservableObject {
                     legacyText: legacyText, legacyConfidence: confidence
                 )
                 self.sessionLanguage = legacyWins ? plan.legacy : plan.fast
-                // NSLog → unified log, readable via `log show --process mywisper` even for
-                // Finder-launched builds; this is the tuning trace for the thresholds.
-                NSLog("mywisper dual race: fast(%@) conf=%.2f words=%d '%@' | legacy(%@) conf=%.2f words=%d '%@' -> winner %@",
-                      plan.fast, join.fastConfidence ?? -1, fastText.split(separator: " ").count, String(fastText.prefix(48)),
-                      plan.legacy, confidence, legacyText.split(separator: " ").count, String(legacyText.prefix(48)),
-                      self.sessionLanguage)
+                // The tuning trace for the race thresholds.
+                DebugLog.log("dual race: fast(\(plan.fast)) conf=\(join.fastConfidence.map { String(format: "%.2f", $0) } ?? "-") words=\(fastText.split(separator: " ").count) '\(fastText.prefix(48))' | legacy(\(plan.legacy)) conf=\(String(format: "%.2f", confidence)) words=\(legacyText.split(separator: " ").count) '\(legacyText.prefix(48))' -> winner \(self.sessionLanguage)")
                 completionHandler(.success(legacyWins ? legacyText : fastText))
             }
 

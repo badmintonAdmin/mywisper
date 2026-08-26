@@ -44,6 +44,7 @@
 		A8FA57122F71011A0064176F /* IslandGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57132F71011A0064176F /* IslandGlow.swift */; };
 		A8FA57402F71011A0064176F /* IslandSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57412F71011A0064176F /* IslandSettingsView.swift */; };
 		A8FA57522F71011A0064176F /* TranslationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57532F71011A0064176F /* TranslationEngine.swift */; };
+		A8FA57602F71011A0064176F /* DebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57612F71011A0064176F /* DebugLog.swift */; };
 		A8FA57502F71011A0064176F /* ActivityAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57512F71011A0064176F /* ActivityAssertion.swift */; };
 		A8FA57202F71011A0064176F /* EdgeGlow.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57212F71011A0064176F /* EdgeGlow.metal */; };
 		A8FA57222F71011A0064176F /* ParticleCloud.metal in Sources */ = {isa = PBXBuildFile; fileRef = A8FA57232F71011A0064176F /* ParticleCloud.metal */; };
@@ -118,6 +119,7 @@
 		A8FA57132F71011A0064176F /* IslandGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandGlow.swift; sourceTree = "<group>"; };
 		A8FA57412F71011A0064176F /* IslandSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandSettingsView.swift; sourceTree = "<group>"; };
 		A8FA57532F71011A0064176F /* TranslationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationEngine.swift; sourceTree = "<group>"; };
+		A8FA57612F71011A0064176F /* DebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		A8FA57512F71011A0064176F /* ActivityAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityAssertion.swift; sourceTree = "<group>"; };
 		A8FA57212F71011A0064176F /* EdgeGlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = EdgeGlow.metal; sourceTree = "<group>"; };
 		A8FA57232F71011A0064176F /* ParticleCloud.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ParticleCloud.metal; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 				A8FA57132F71011A0064176F /* IslandGlow.swift */,
 				A8FA57412F71011A0064176F /* IslandSettingsView.swift */,
 				A8FA57532F71011A0064176F /* TranslationEngine.swift */,
+				A8FA57612F71011A0064176F /* DebugLog.swift */,
 				A8FA57512F71011A0064176F /* ActivityAssertion.swift */,
 				A8FA57302F71011A0064176F /* Shaders */,
 				A8CF8F2B2F71012A0064176F /* FileTranscriptionService.swift */,
@@ -427,6 +430,7 @@
 				A8FA57122F71011A0064176F /* IslandGlow.swift in Sources */,
 				A8FA57402F71011A0064176F /* IslandSettingsView.swift in Sources */,
 				A8FA57522F71011A0064176F /* TranslationEngine.swift in Sources */,
+				A8FA57602F71011A0064176F /* DebugLog.swift in Sources */,
 				A8FA57502F71011A0064176F /* ActivityAssertion.swift in Sources */,
 				A8FA57202F71011A0064176F /* EdgeGlow.metal in Sources */,
 				A8FA57222F71011A0064176F /* ParticleCloud.metal in Sources */,
@@ -594,7 +598,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -609,7 +613,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -625,7 +629,7 @@
 				CODE_SIGN_ENTITLEMENTS = mywisper/mywisper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_ASSET_PATHS = "\"mywisper/Preview Content\"";
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -640,7 +644,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -654,11 +658,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -673,11 +677,11 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.3;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -691,10 +695,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -708,10 +712,10 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEVELOPMENT_TEAM = 7KH9QVNN54;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.barssoft.mywisperUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
