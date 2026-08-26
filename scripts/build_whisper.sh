@@ -39,6 +39,7 @@ fi
 if [ ! -f "$BUILD/bin/whisper-cli" ]; then
   DEVELOPER_DIR="$XCODE_DEV" cmake -B "$BUILD" -S "$SRC" \
     -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=ON \
     -DGGML_NATIVE=OFF \
