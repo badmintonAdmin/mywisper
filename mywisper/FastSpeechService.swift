@@ -384,27 +384,24 @@ actor FastSpeechService {
 // MARK: - Microphone input
 
 /// Feeds live microphone audio into a SpeechAnalyzer input stream, converting from the
-/// hardware format to the analyzer's preferred format. Honors the user's chosen input
-/// device the same way AudioRecorder does: by temporarily switching the system default
-/// input (AVAudioEngine's inputNode follows the system default), restored on stop.
+/// hardware format to the analyzer's preferred format. The user's chosen input device is
+/// pinned on the engine itself and the tap survives device changes (see ResilientMicTap).
 @available(macOS 26.0, *)
 private final class FastMicrophoneInput: @unchecked Sendable {
     /// ONE engine for the process, shared across sessions (only one fast session runs at a
     /// time). A fresh AVAudioEngine per session churns CoreAudio audio units and crashes
     /// SIGILL inside AudioConverterNew after bursts of quick dictations.
     private static let sharedEngine = AVAudioEngine()
-    private var audioEngine: AVAudioEngine { Self.sharedEngine }
+    private let micTap = ResilientMicTap(engine: FastMicrophoneInput.sharedEngine, bufferSize: 1_024, label: "fast")
     private let continuation: AsyncStream<AnalyzerInput>.Continuation
     private let onLevel: (@Sendable (Float) -> Void)?
     private let onRawBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private let onFailure: @Sendable (String) -> Void
     private let stateLock = NSLock()
-    private var running = false
     private var reportedFailure = false
     /// False after the dual race kills this side: capture continues (levels + raw fan-out)
     /// but the format conversion and analyzer feed stop burning CPU.
     private var converting = true
-    private var previousDefaultInputDeviceID: AudioDeviceID?
 
     /// Stop feeding the analyzer while keeping the microphone hot for the raw-buffer fan-out.
     func stopConverting() {
@@ -448,69 +445,27 @@ private final class FastMicrophoneInput: @unchecked Sendable {
     }
 
     func start(outputFormat: AVAudioFormat) throws {
-        applySelectedInputDevice()
-
-        let inputNode = audioEngine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
-            restoreDefaultInputDevice()
-            throw FastSpeechService.FastSpeechError.microphoneUnavailable
-        }
-
-        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            restoreDefaultInputDevice()
-            throw FastSpeechService.FastSpeechError.microphoneUnavailable
-        }
-
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: inputFormat) { [weak self] buffer, _ in
-            self?.receive(buffer, converter: converter, outputFormat: outputFormat)
-        }
-
-        audioEngine.prepare()
+        // Re-arms itself on headphone connect/disconnect (fresh converter for the new
+        // hardware format) instead of hanging silently or crashing in installTap.
         do {
-            try audioEngine.start()
-            stateLock.lock()
-            running = true
-            stateLock.unlock()
-        } catch {
-            inputNode.removeTap(onBus: 0)
-            restoreDefaultInputDevice()
-            throw error
+            try micTap.start(onFailure: { [weak self] message in
+                self?.reportFailure(message)
+            }, makeHandler: { [weak self] inputFormat in
+                guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+                    throw FastSpeechService.FastSpeechError.microphoneUnavailable
+                }
+                return { buffer in
+                    self?.receive(buffer, converter: converter, outputFormat: outputFormat)
+                }
+            })
+        } catch let error as MicTapError {
+            DebugLog.log("fast mic: start failed: \(error.localizedDescription)")
+            throw FastSpeechService.FastSpeechError.microphoneUnavailable
         }
     }
 
     func stop() {
-        stateLock.lock()
-        let shouldStop = running
-        running = false
-        stateLock.unlock()
-
-        guard shouldStop else { return }
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
-        restoreDefaultInputDevice()
-    }
-
-    // MARK: Input device (mirrors AudioRecorder)
-
-    private func applySelectedInputDevice() {
-        previousDefaultInputDeviceID = nil
-        let savedID = SettingsManager.shared.selectedInputDeviceID
-        guard !savedID.isEmpty else { return }
-        guard let target = AudioInputDevices.available().first(where: { $0.uniqueID == savedID }) else {
-            return
-        }
-        if let current = AudioInputDevices.currentDefaultInputDeviceID(), current != target.coreAudioID {
-            previousDefaultInputDeviceID = current
-            AudioInputDevices.setDefaultInputDevice(target.coreAudioID)
-        }
-    }
-
-    private func restoreDefaultInputDevice() {
-        if let previous = previousDefaultInputDeviceID {
-            AudioInputDevices.setDefaultInputDevice(previous)
-            previousDefaultInputDeviceID = nil
-        }
+        micTap.stop()
     }
 
     // MARK: Audio path (audio thread)

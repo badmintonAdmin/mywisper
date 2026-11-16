@@ -26,20 +26,19 @@ class SpeechTranscriber {
     // Used by the Apple Live engine's fallback for languages the new SpeechAnalyzer doesn't
     // cover (Russian!): audio streams into SFSpeechRecognizer WHILE the user speaks, so the
     // result at stop is near-instant, versus the classic record-file-then-transcribe path.
-    private var liveEngine: AVAudioEngine?
+    /// True while this transcriber owns the microphone (startLiveSession); feed mode never does.
+    private var liveMicActive = false
     /// ONE engine for every live session, created once and reused. Building a fresh
     /// AVAudioEngine per session churns CoreAudio audio units and crashes SIGILL inside
     /// AudioConverterNew (caulk allocator) after a burst of quick sessions — observed in
     /// the field with sessions 5–10 s apart.
     private let liveAudioEngine = AVAudioEngine()
+    private lazy var liveMicTap = ResilientMicTap(engine: liveAudioEngine, bufferSize: 1_024, label: "legacy-live")
     private var liveRequest: SFSpeechAudioBufferRecognitionRequest?
     private var liveTask: SFSpeechRecognitionTask?
     private var liveDelegate: SegmentAccumulatingDelegate?
     private var liveFinishCompletion: ((Result<String, Error>) -> Void)?
     private var liveOnFailure: ((String) -> Void)?
-    /// Previous system default input, stashed while we honor the user's chosen microphone
-    /// (AVAudioEngine's inputNode follows the system default) — restored on stop.
-    private var livePreviousDefaultInputID: AudioDeviceID?
 
     var isReady: Bool {
         recognizer?.isAvailable ?? false
@@ -185,17 +184,7 @@ class SpeechTranscriber {
         guard let recognizer = recognizer, recognizer.isAvailable else {
             throw TranscriberError.recognizerUnavailable
         }
-        guard liveEngine == nil else { return }
-
-        applyLiveSelectedInputDevice()
-
-        let engine = liveAudioEngine
-        let inputNode = engine.inputNode
-        let format = inputNode.outputFormat(forBus: 0)
-        guard format.channelCount > 0, format.sampleRate > 0 else {
-            restoreLiveDefaultInputDevice()
-            throw TranscriberError.recognizerUnavailable
-        }
+        guard !liveMicActive else { return }
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -206,28 +195,31 @@ class SpeechTranscriber {
             self?.liveRecognitionCompleted(with: result)
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-            self?.appendLiveBuffer(buffer)
-            guard let onLevel,
-                  let samples = buffer.floatChannelData?[0],
-                  buffer.frameLength > 0 else { return }
-            let rms = vDSP.rootMeanSquare(
-                UnsafeBufferPointer(start: samples, count: Int(buffer.frameLength))
-            )
-            let db = 20 * log10(max(rms, .leastNormalMagnitude))
-            onLevel(min(1, max(0, (db + 50) / 50)))
-        }
-
-        engine.prepare()
+        // Re-arms itself when headphones connect/disconnect mid-session instead of hanging
+        // silently, and never crashes in installTap on a stale format.
         do {
-            try engine.start()
+            try liveMicTap.start(onFailure: { message in
+                // Same contract as recognition dying mid-recording (callable from any queue).
+                onFailure(message)
+            }, makeHandler: { [weak self] _ in
+                return { buffer in
+                    self?.appendLiveBuffer(buffer)
+                    guard let onLevel,
+                          let samples = buffer.floatChannelData?[0],
+                          buffer.frameLength > 0 else { return }
+                    let rms = vDSP.rootMeanSquare(
+                        UnsafeBufferPointer(start: samples, count: Int(buffer.frameLength))
+                    )
+                    let db = 20 * log10(max(rms, .leastNormalMagnitude))
+                    onLevel(min(1, max(0, (db + 50) / 50)))
+                }
+            })
         } catch {
-            inputNode.removeTap(onBus: 0)
-            restoreLiveDefaultInputDevice()
-            throw error
+            DebugLog.log("legacy live mic: start failed: \(error.localizedDescription)")
+            throw TranscriberError.recognizerUnavailable
         }
 
-        liveEngine = engine
+        liveMicActive = true
         setLiveRequest(request)
         liveDelegate = delegate
         liveOnFailure = onFailure
@@ -282,32 +274,9 @@ class SpeechTranscriber {
     }
 
     private func stopLiveAudio() {
-        guard let engine = liveEngine else { return }
-        liveEngine = nil
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        restoreLiveDefaultInputDevice()
-    }
-
-    // Honor the user's chosen input device (mirrors AudioRecorder).
-    private func applyLiveSelectedInputDevice() {
-        livePreviousDefaultInputID = nil
-        let savedID = SettingsManager.shared.selectedInputDeviceID
-        guard !savedID.isEmpty else { return }
-        guard let target = AudioInputDevices.available().first(where: { $0.uniqueID == savedID }) else {
-            return
-        }
-        if let current = AudioInputDevices.currentDefaultInputDeviceID(), current != target.coreAudioID {
-            livePreviousDefaultInputID = current
-            AudioInputDevices.setDefaultInputDevice(target.coreAudioID)
-        }
-    }
-
-    private func restoreLiveDefaultInputDevice() {
-        if let previous = livePreviousDefaultInputID {
-            AudioInputDevices.setDefaultInputDevice(previous)
-            livePreviousDefaultInputID = nil
-        }
+        guard liveMicActive else { return }
+        liveMicActive = false
+        liveMicTap.stop()
     }
 }
 

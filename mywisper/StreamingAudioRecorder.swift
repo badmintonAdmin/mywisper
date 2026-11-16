@@ -99,7 +99,7 @@ final class StreamingAudioRecorder {
     var onFinished: ((_ totalSegments: Int, _ duration: TimeInterval, _ tooShort: Bool) -> Void)?
 
     private let engine = AVAudioEngine()
-    private var converter: AVAudioConverter?
+    private lazy var micTap = ResilientMicTap(engine: engine, bufferSize: 4096, label: "whisper-live")
     private var outputFormat: AVAudioFormat!
 
     /// All segment writing happens on this serial queue so the realtime audio thread only converts
@@ -128,8 +128,6 @@ final class StreamingAudioRecorder {
     /// mid-word and degrades Whisper at that seam, whereas a silence cut is lossless.
     private static let maxHeadroomSeconds = 240.0
 
-    private var previousDefaultInputDeviceID: AudioDeviceID?
-
     func start(segmentSeconds: Double) throws {
         minSegmentSamples = Int(segmentSeconds * Double(Self.targetSampleRate))
         maxSegmentSamples = Int((segmentSeconds + Self.maxHeadroomSeconds) * Double(Self.targetSampleRate))
@@ -138,8 +136,6 @@ final class StreamingAudioRecorder {
         currentSegmentSamples = 0
         silentRunSamples = 0
         currentWriter = nil
-
-        applySelectedInputDevice()
 
         guard let outFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -151,31 +147,22 @@ final class StreamingAudioRecorder {
         }
         outputFormat = outFormat
 
-        let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else {
-            // No usable input format usually means the mic isn't available / permission denied.
-            restoreDefaultInputDevice()
-            throw AudioRecorderError.recordingFailed
-        }
-        converter = AVAudioConverter(from: inputFormat, to: outFormat)
-
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.handleTap(buffer: buffer, inputFormat: inputFormat)
-        }
-
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            input.removeTap(onBus: 0)
-            restoreDefaultInputDevice()
-            throw error
-        }
+        // The tap re-arms itself (with a fresh converter for the new hardware format) when
+        // headphones connect/disconnect mid-recording; segments keep flowing at 16 kHz.
+        try micTap.start(onFailure: { message in
+            DebugLog.log("live whisper: \(message)")
+        }, makeHandler: { [weak self] inputFormat in
+            guard let converter = AVAudioConverter(from: inputFormat, to: outFormat) else {
+                throw AudioRecorderError.invalidFormat
+            }
+            return { buffer in
+                self?.handleTap(buffer: buffer, inputFormat: inputFormat, converter: converter)
+            }
+        })
     }
 
-    private func handleTap(buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat) {
-        guard let converter = converter, buffer.frameLength > 0 else { return }
+    private func handleTap(buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat, converter: AVAudioConverter) {
+        guard buffer.frameLength > 0 else { return }
 
         let ratio = outputFormat.sampleRate / inputFormat.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
@@ -261,9 +248,7 @@ final class StreamingAudioRecorder {
 
     /// Stop recording. Flushes any remaining audio as a final segment, then fires `onFinished`.
     func stop() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        restoreDefaultInputDevice()
+        micTap.stop()
 
         segmentQueue.async { [weak self] in
             guard let self = self else { return }
@@ -285,9 +270,7 @@ final class StreamingAudioRecorder {
 
     /// Abort recording and delete every segment file produced this session.
     func cancel() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        restoreDefaultInputDevice()
+        micTap.stop()
         onAudioLevel = nil
         onSegmentReady = nil
         onFinished = nil
@@ -301,26 +284,6 @@ final class StreamingAudioRecorder {
                 let url = tmp.appendingPathComponent("mywisper_live_\(id)_\(i).wav")
                 try? FileManager.default.removeItem(at: url)
             }
-        }
-    }
-
-    // MARK: - Input device selection (mirrors AudioRecorder)
-
-    private func applySelectedInputDevice() {
-        previousDefaultInputDeviceID = nil
-        let savedID = SettingsManager.shared.selectedInputDeviceID
-        guard !savedID.isEmpty else { return }
-        guard let target = AudioInputDevices.available().first(where: { $0.uniqueID == savedID }) else { return }
-        if let current = AudioInputDevices.currentDefaultInputDeviceID(), current != target.coreAudioID {
-            previousDefaultInputDeviceID = current
-            AudioInputDevices.setDefaultInputDevice(target.coreAudioID)
-        }
-    }
-
-    private func restoreDefaultInputDevice() {
-        if let previous = previousDefaultInputDeviceID {
-            AudioInputDevices.setDefaultInputDevice(previous)
-            previousDefaultInputDeviceID = nil
         }
     }
 }
