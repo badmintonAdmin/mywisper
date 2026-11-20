@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a DMG background image for mywisper installer."""
+"""Generate a DMG background image for MyWhisper installer."""
 import sys
 import os
 
@@ -53,7 +53,7 @@ titleAttrs = {
     NSFontAttributeName: NSFont.boldSystemFontOfSize_(18),
     NSForegroundColorAttributeName: NSColor.colorWithRed_green_blue_alpha_(0.85, 0.85, 0.92, 1.0),
 }
-title = NSAttributedString.alloc().initWithString_attributes_("mywisper", titleAttrs)
+title = NSAttributedString.alloc().initWithString_attributes_("MyWhisper", titleAttrs)
 titleSize = title.size()
 title.drawAtPoint_(NSMakePoint((width - titleSize.width) / 2, height - 42))
 

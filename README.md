@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/banner_dark.png">
-  <img alt="My Whisper" src="docs/banner_light.png" width="640">
+  <img alt="MyWhisper" src="docs/banner_light.png" width="640">
 </picture>
 
 ### Private, local‑first dictation for macOS
@@ -21,14 +21,14 @@ Press a hotkey, speak, and your words are transcribed **on your Mac** and pasted
 </div>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="My Whisper main window" width="900">
+  <img src="docs/screenshot.png" alt="MyWhisper main window" width="900">
 </p>
 
 ---
 
-## Why My Whisper
+## Why MyWhisper
 
-Most dictation tools send your voice to a server. **My Whisper runs Whisper locally** via a bundled, self‑contained [`whisper.cpp`](https://github.com/ggerganov/whisper.cpp) engine (GPU‑accelerated with Metal on Apple Silicon). Your audio never has to leave the machine. When you *want* more, you can opt into cloud transcription or AI clean‑up — but the default is private and offline.
+Most dictation tools send your voice to a server. **MyWhisper runs Whisper locally** via a bundled, self‑contained [`whisper.cpp`](https://github.com/ggerganov/whisper.cpp) engine (GPU‑accelerated with Metal on Apple Silicon). Your audio never has to leave the machine. When you *want* more, you can opt into cloud transcription or AI clean‑up — but the default is private and offline.
 
 It lives in your menu bar, fires on a global hotkey from **any** app, and pastes the result straight into the focused text field.
 
@@ -51,20 +51,22 @@ It lives in your menu bar, fires on a global hotkey from **any** app, and pastes
 > **Apple Silicon (M1–M4)** is the recommended, fully‑tested build. The Intel build is experimental (cross‑built, not hardware‑tested).
 
 1. Download the DMG for your Mac from the [**latest release**](https://github.com/badmintonAdmin/mywisper/releases/latest):
-   - **Apple Silicon** → `mywisper-x.y.z-AppleSilicon.dmg`
-   - **Intel** → `mywisper-x.y.z-Intel.dmg` *(experimental)*
-2. Open the DMG and drag **My Whisper** into **Applications**.
+   - **Apple Silicon** → `MyWhisper-x.y.z-AppleSilicon.dmg`
+   - **Intel** → `MyWhisper-x.y.z-Intel.dmg` *(experimental)*
+2. Open the DMG and drag **MyWhisper** into **Applications**.
 3. Launch it. On first run, open **Settings → Permissions** and grant **Accessibility** (needed to paste into other apps) and **Microphone**.
 
+> **Upgrading from “mywisper” (v1.6.5 or older)?** The app was renamed to MyWhisper in v1.7.0. On first launch it moves your settings, history and downloaded models over automatically and puts the old `mywisper.app` in the Trash. macOS sees it as a new app, so grant **Accessibility** and **Microphone** once more (and re‑enable *Launch at login* if you used it).
+
 <details>
-<summary><b>“My Whisper is damaged / can’t be opened”?</b></summary>
+<summary><b>“MyWhisper is damaged / can’t be opened”?</b></summary>
 
 The app is ad‑hoc signed (not notarized), so Gatekeeper warns on first open. Either:
 
 - **Right‑click** the app → **Open** → **Open**, or
 - run once in Terminal:
   ```bash
-  xattr -dr com.apple.quarantine /Applications/mywisper.app
+  xattr -dr com.apple.quarantine /Applications/MyWhisper.app
   ```
 </details>
 
@@ -96,7 +98,7 @@ Whisper models from **Tiny (75 MB)** to **Large‑v3 / Large‑v3‑turbo** are 
 
 - Local Whisper and Apple Speech never send audio off the device.
 - Cloud transcription and AI post‑processing are **opt‑in** and only used when you enable them and provide an OpenAI key.
-- History is stored locally in `~/Library/Application Support/mywisper/`.
+- History is stored locally in `~/Library/Application Support/MyWhisper/`.
 
 ## Build from source
 
@@ -104,8 +106,8 @@ Requires full **Xcode** (Metal + `xcodebuild`).
 
 ```bash
 # Resolve dependencies, then build & run
-xcodebuild -project mywisper.xcodeproj -scheme mywisper -resolvePackageDependencies
-xcodebuild -project mywisper.xcodeproj -scheme mywisper build
+xcodebuild -project MyWhisper.xcodeproj -scheme MyWhisper -resolvePackageDependencies
+xcodebuild -project MyWhisper.xcodeproj -scheme MyWhisper build
 ```
 
 Package a distributable DMG (builds a self‑contained `whisper.cpp` and bundles it into the app):

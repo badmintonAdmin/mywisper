@@ -1,12 +1,12 @@
 #!/bin/bash
-# Create a styled DMG installer for mywisper
+# Create a styled DMG installer for MyWhisper
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-APP_NAME="mywisper"
-DMG_NAME="mywisper.dmg"
-VOLUME_NAME="mywisper"
+APP_NAME="MyWhisper"
+DMG_NAME="MyWhisper.dmg"
+VOLUME_NAME="MyWhisper"
 STAGING_DIR="$PROJECT_DIR/build/dmg_staging"
 # Full Xcode is required (Metal compilation + xcodebuild). Override with DEVELOPER_DIR.
 XCODE_PATH="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
@@ -33,13 +33,13 @@ else
 fi
 DMG_OUTPUT="$PROJECT_DIR/installation/$OUT_SUBDIR/$DMG_NAME"
 
-echo "=== Building mywisper DMG ($ARCH) ==="
+echo "=== Building MyWhisper DMG ($ARCH) ==="
 
 # 1. Build Release
 echo "[1/6] Building Release ($ARCH)..."
 DEVELOPER_DIR="$XCODE_PATH" xcodebuild \
-    -project "$PROJECT_DIR/mywisper.xcodeproj" \
-    -scheme mywisper \
+    -project "$PROJECT_DIR/MyWhisper.xcodeproj" \
+    -scheme MyWhisper \
     -configuration Release \
     ARCHS="$ARCH" \
     ONLY_ACTIVE_ARCH=NO \
@@ -178,8 +178,6 @@ echo "  DMG: $DMG_OUTPUT ($DMG_SIZE)"
 echo ""
 echo "  To install:"
 echo "    1. Open $DMG_OUTPUT"
-echo "    2. Drag mywisper to Applications"
+echo "    2. Drag MyWhisper to Applications"
 echo "    3. Grant Accessibility in System Settings"
 echo ""
-echo "  Or use the quick reinstall script:"
-echo "    bash ~/Downloads/reinstall_mywisper.sh"
